@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <title>پلتفرم بازی کارتی و سکوئنس</title>
+    <style>
+        body { background-color: #10382b; color: white; font-family: sans-serif; text-align: center; margin: 0; padding: 10px; }
+        .board { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; max-width: 340px; margin: 20px auto; }
+        .cell { width: 60px; height: 60px; background: #fff; color: #111; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-weight: bold; cursor: pointer; }
+        .joker { background: #ffd700; color: #000; }
+        #status { margin: 10px; font-size: 14px; color: #88d49e; }
+    </style>
+</head>
+<body>
+    <h2>میز اختصاصی پاسور و سکوئنس</h2>
+    <div id="status">در حال اتصال به شبکه بازی...</div>
+    <div class="board" id="board"></div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        
+        const userId = tg.initDataUnsafe?.user?.id || Math.floor(Math.random() * 100000);
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const socket = new WebSocket(`${protocol}//${window.location.host}/ws/game/default_room/${userId}`);
+
+        const board = document.getElementById('board');
+        for (let i = 0; i < 25; i++) {
+            const cell = document.createElement('div');
+            cell.className = 'cell';
+            cell.innerText = i + 1;
+            cell.onclick = () => playJoker(i);
+            board.appendChild(cell);
+        }
+
+        socket.onopen = () => {
+            document.getElementById('status').innerText = "متصل شد! نوبت بازی شماست.";
+        };
+
+        socket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.status === "ok") {
+                document.getElementById('status').innerText = `حرکت ثبت شد. نوبت نفر بعدی: ${data.next_turn}`;
+            }
+        };
+
+        function playJoker(pos) {
+            socket.send(JSON.stringify({
+                action: "play_card",
+                card: { is_joker: true, joker_type: "TWO_EYED" },
+                position: pos.toString()
+            }));
+        }
+    </script>
+</body>
+</html>
