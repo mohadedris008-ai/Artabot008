@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+aiogram>=3.0.0
+httpx
+jinja2
+python-multipart
