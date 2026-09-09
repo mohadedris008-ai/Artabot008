@@ -343,23 +343,8 @@
             <h3 style="margin-bottom: 8px;">🎮 هب بازی‌ها</h3>
             <p style="font-size: 12px; color: var(--text-sub);">بازی مورد علاقه خود را انتخاب کنید:</p>
             
-            <div class="games-grid">
-                <div class="game-card-hub" onclick="enterGame('pasur', 'پاسور چهاربرگ')">
-                    <div class="icon">♠️</div>
-                    <div class="title">پاسور (۴ برگ)</div>
-                </div>
-                <div class="game-card-hub" onclick="enterGame('hokm', 'حکم آنلاین')">
-                    <div class="icon">👑</div>
-                    <div class="title">حکم ۴ نفره</div>
-                </div>
-                <div class="game-card-hub" onclick="enterGame('sequence', 'سکوئنس')">
-                    <div class="icon">🟦</div>
-                    <div class="title">سکوئنس</div>
-                </div>
-                <div class="game-card-hub" onclick="enterGame('backgammon', 'تخته نرد')">
-                    <div class="icon">🎲</div>
-                    <div class="title">تخته‌نرد</div>
-                </div>
+            <div class="games-grid" id="games-grid">
+                <!-- این بخش به‌صورت داینامیک از /api/games/catalog پر می‌شود -->
             </div>
         </div>
 
@@ -399,6 +384,18 @@
 
                 <div class="table-center-cards" id="table-cards-container">
                     <!-- کارت‌های روی میز -->
+                </div>
+
+                <div id="sequence-board-container" style="display:none; grid-template-columns: repeat(10, 1fr); gap: 2px; width: 92%; max-width: 380px; margin: 0 auto;"></div>
+
+                <div id="hokm-trump-picker" style="display:none; gap: 10px; margin-top: 10px;">
+                    <div style="font-size: 12px; color: #d1fae5; margin-bottom: 6px; text-align: center;">به عنوان حاکم، خال حکم را انتخاب کنید:</div>
+                    <div style="display:flex; gap: 10px; justify-content: center;">
+                        <button class="btn-gold" onclick="declareTrump('♠')">♠</button>
+                        <button class="btn-gold" onclick="declareTrump('♥')">♥</button>
+                        <button class="btn-gold" onclick="declareTrump('♦')">♦</button>
+                        <button class="btn-gold" onclick="declareTrump('♣')">♣</button>
+                    </div>
                 </div>
             </div>
 
@@ -474,13 +471,25 @@
             tg.expand();
         }
 
-        let currentUser = null;
+        let currentUser = null;   // شامل token هم می‌شود؛ برای هر درخواست محافظت‌شده لازم است
         let socket = null;
-        let activeRoomId = "room_global_1";
+        let currentGameType = null;
+        let selectedHandCard = null; // برای سکوئنس: اول کارت انتخاب می‌شود بعد خانه
+
+        // همه‌ی درخواست‌های احرازهویت‌دار باید از این عبور کنند تا هدر
+        // Authorization فراموش نشود (این دقیقاً همان چیزی بود که قبلاً
+        // باعث می‌شد گردونه/پاداش‌روزانه/پنل‌مدیریت همیشه 401 بگیرند).
+        async function authFetch(url, options = {}) {
+            const headers = Object.assign({}, options.headers || {});
+            if (currentUser?.token) {
+                headers['Authorization'] = `Bearer ${currentUser.token}`;
+            }
+            return fetch(url, Object.assign({}, options, { headers }));
+        }
 
         async function initApp() {
             const initData = tg?.initData || "";
-            
+
             try {
                 const res = await fetch('/api/user/sync', {
                     method: 'POST',
@@ -490,15 +499,19 @@
 
                 if (res.ok) {
                     currentUser = await res.json();
-                    updateUI();
+                    document.getElementById('ui-status').innerText = "متصل";
                 } else {
-                    // Fallback کاربر مهمان در صورت تست محلی
-                    currentUser = { id: 12345, first_name: "بازیکن مهمان", coins: 1000, gems: 10, is_admin: true, card_back_skin: "classic" };
-                    updateUI();
+                    document.getElementById('ui-status').innerText = "خطا در ورود";
+                    document.getElementById('ui-status').style.color = "#ef4444";
                 }
             } catch (err) {
-                currentUser = { id: 12345, first_name: "بازیکن مهمان", coins: 1000, gems: 10, is_admin: true, card_back_skin: "classic" };
+                document.getElementById('ui-status').innerText = "عدم دسترسی به سرور";
+                document.getElementById('ui-status').style.color = "#ef4444";
+            }
+
+            if (currentUser) {
                 updateUI();
+                loadGamesCatalog();
             }
         }
 
@@ -511,6 +524,40 @@
             if (currentUser.is_admin) {
                 document.getElementById('nav-admin-btn').style.display = 'flex';
                 loadAdminStats();
+            }
+        }
+
+        async function refreshBalance() {
+            try {
+                const res = await authFetch('/api/user/me');
+                if (res.ok) {
+                    const data = await res.json();
+                    currentUser.coins = data.coins;
+                    currentUser.gems = data.gems;
+                    updateUI();
+                }
+            } catch (e) {}
+        }
+
+        // ---------------------------------------------------------
+        // هاب بازی‌ها: به‌جای هاردکد بودن ۴ کارت (که یکی‌شون یعنی تخته‌نرد
+        // اصلاً موتور نداشت)، از فهرست واقعیِ بازی‌های فعال سرور می‌خونیم.
+        // ---------------------------------------------------------
+        async function loadGamesCatalog() {
+            try {
+                const res = await fetch('/api/games/catalog');
+                const data = await res.json();
+                const grid = document.getElementById('games-grid');
+                grid.innerHTML = "";
+                (data.games || []).forEach(game => {
+                    const el = document.createElement('div');
+                    el.className = 'game-card-hub';
+                    el.onclick = () => enterGame(game.id, game.title);
+                    el.innerHTML = `<div class="icon">${game.icon}</div><div class="title">${game.title}</div>`;
+                    grid.appendChild(el);
+                });
+            } catch (e) {
+                console.log('خطا در دریافت فهرست بازی‌ها', e);
             }
         }
 
@@ -530,16 +577,29 @@
         // ---------------------------------------------------------
         function enterGame(gameType, title) {
             document.getElementById('arena-title').innerText = title;
+            currentGameType = gameType;
+            selectedHandCard = null;
             switchTab('arena-tab', null);
+            document.getElementById('table-cards-container').innerHTML = "";
+            document.getElementById('sequence-board-container').style.display = 'none';
+            document.getElementById('hokm-trump-picker').style.display = 'none';
+            document.getElementById('player-hand-container').innerHTML =
+                '<div style="color:#94a3b8; font-size:12px;">در انتظار سایر بازیکنان...</div>';
 
-            connectWebSocket();
-            loadHandCards();
+            connectWebSocket(gameType);
         }
 
-        function connectWebSocket() {
+        function sendAction(action, payload) {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({ action, payload: payload || {} }));
+            }
+        }
+
+        function connectWebSocket(gameType) {
+            if (socket) { try { socket.close(); } catch (e) {} }
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}/ws/game/${activeRoomId}/${currentUser.id}`;
-            
+            const wsUrl = `${protocol}//${window.location.host}/ws/game/${gameType}/${currentUser.id}?token=${encodeURIComponent(currentUser.token)}`;
+
             socket = new WebSocket(wsUrl);
 
             socket.onopen = () => {
@@ -549,15 +609,23 @@
 
             socket.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-                
-                if (data.type === 'CARD_PLAYED') {
-                    renderTableCard(data.card);
-                    playSound('card_play');
+
+                if (data.type === 'STATE_UPDATE') {
+                    renderGameState(data.state);
                 } else if (data.type === 'LIVE_EMOJI') {
                     showFloatingEmoji(data.emoji);
                 } else if (data.type === 'DICE_ROLLED') {
                     playSound('dice');
-                    alert(`بازیکن تاس ریخت: ${data.value}`);
+                } else if (data.type === 'ACTION_ERROR') {
+                    alert(data.message);
+                } else if (data.type === 'ERROR') {
+                    alert(data.message);
+                } else if (data.type === 'GAME_OVER') {
+                    playSound('win');
+                    alert(data.winner ? `بازی تمام شد! برنده: ${data.winner}` : 'بازی تمام شد!');
+                    refreshBalance();
+                } else if (data.type === 'PLAYER_LEFT') {
+                    // اطلاع‌رسانی سبک؛ وضعیت واقعی با STATE_UPDATE بعدی همگام می‌شود
                 }
             };
 
@@ -567,55 +635,124 @@
             };
         }
 
-        function loadHandCards() {
-            const container = document.getElementById('player-hand-container');
-            container.innerHTML = "";
-
-            const sampleHand = [
-                { suit: '♠️', rank: 'A', color: 'black' },
-                { suit: '♥️', rank: '10', color: 'red' },
-                { suit: '♦️', rank: 'J', color: 'red' },
-                { suit: '♣️', rank: 'K', color: 'black' }
-            ];
-
-            sampleHand.forEach(card => {
-                const el = document.createElement('div');
-                el.className = `card ${card.color} ${currentUser.card_back_skin === 'gold' ? 'skin-gold' : ''}`;
-                el.innerHTML = `<div>${card.rank}</div><div style="text-align:center; font-size: 20px;">${card.suit}</div><div style="align-self: flex-end;">${card.rank}</div>`;
-                
-                el.onclick = () => playCard(card, el);
-                container.appendChild(el);
-            });
+        // ---------------------------------------------------------
+        // رندر وضعیت بازی که سرور می‌فرستد (منبع واحد حقیقت؛ دیگر هیچ
+        // دست یا وضعیتی سمت کلاینت شبیه‌سازی نمی‌شود)
+        // ---------------------------------------------------------
+        function cardLabel(card) {
+            return { suit: card.suit, rank: card.rank, color: card.color || (['♥','♦'].includes(card.suit) ? 'red' : 'black') };
         }
 
-        function playCard(card, element) {
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({
-                    action: 'PLAY_CARD',
-                    card: card
-                }));
-                element.remove();
+        function makeCardEl(card, onClick) {
+            const c = cardLabel(card);
+            const el = document.createElement('div');
+            el.className = `card ${c.color} ${currentUser.card_back_skin === 'gold' ? 'skin-gold' : ''}`;
+            el.innerHTML = `<div>${c.rank}</div><div style="text-align:center; font-size: 20px;">${c.suit}</div><div style="align-self:flex-end;">${c.rank}</div>`;
+            if (onClick) el.onclick = onClick;
+            return el;
+        }
+
+        function renderGameState(state) {
+            const handContainer = document.getElementById('player-hand-container');
+            const tableContainer = document.getElementById('table-cards-container');
+            const boardContainer = document.getElementById('sequence-board-container');
+            const trumpPicker = document.getElementById('hokm-trump-picker');
+
+            handContainer.innerHTML = "";
+            tableContainer.innerHTML = "";
+            boardContainer.style.display = 'none';
+            trumpPicker.style.display = 'none';
+
+            const myHand = state.my_hand || [];
+
+            if (state.game_type === 'sequence') {
+                boardContainer.style.display = 'grid';
+                renderSequenceBoard(state);
+                myHand.forEach(card => {
+                    const el = makeCardEl(card, () => {
+                        selectedHandCard = card;
+                        document.querySelectorAll('#player-hand-container .card').forEach(c => c.style.outline = 'none');
+                        el.style.outline = '3px solid #f59e0b';
+                    });
+                    handContainer.appendChild(el);
+                });
+                return;
+            }
+
+            if (state.game_type === 'hokm') {
+                if (state.deal_phase === 0 && state.hakim === String(currentUser.id)) {
+                    trumpPicker.style.display = 'flex';
+                }
+                (state.trick_cards || []).forEach(entry => tableContainer.appendChild(makeCardEl(entry.card)));
+                myHand.forEach(card => {
+                    const el = makeCardEl(card, () => sendAction('play_card', { suit: card.suit, rank: card.rank }));
+                    handContainer.appendChild(el);
+                });
+                return;
+            }
+
+            // پاسور (و هر بازی کارتی ساده‌ی دیگری با همین شکل state)
+            (state.table_cards || []).forEach(card => tableContainer.appendChild(makeCardEl(card)));
+            myHand.forEach(card => {
+                const el = makeCardEl(card, () => {
+                    sendAction('play_card', { card_id: card.id });
+                });
+                handContainer.appendChild(el);
+            });
+
+            if (state.is_finished) {
+                document.getElementById('ui-status').innerText = "بازی تمام شد";
             }
         }
 
-        function renderTableCard(card) {
-            const container = document.getElementById('table-cards-container');
-            const el = document.createElement('div');
-            el.className = `card ${card.color}`;
-            el.innerHTML = `<div>${card.rank}</div><div style="text-align:center; font-size: 20px;">${card.suit}</div><div style="align-self: flex-end;">${card.rank}</div>`;
-            container.appendChild(el);
+        function renderSequenceBoard(state) {
+            const boardContainer = document.getElementById('sequence-board-container');
+            boardContainer.innerHTML = "";
+            const board = state.board || [];
+            const teamColors = { 0: '#3b82f6', 1: '#ef4444', 2: '#10b981' };
+
+            for (let r = 0; r < 10; r++) {
+                for (let c = 0; c < 10; c++) {
+                    const cell = document.createElement('div');
+                    const value = board[r] ? board[r][c] : null;
+                    cell.style.aspectRatio = '1';
+                    cell.style.borderRadius = '4px';
+                    cell.style.display = 'flex';
+                    cell.style.alignItems = 'center';
+                    cell.style.justifyContent = 'center';
+                    cell.style.fontSize = '9px';
+                    cell.style.cursor = 'pointer';
+
+                    if (value === 'W') {
+                        cell.style.background = '#fbbf24';
+                    } else if (value && value.startsWith('team_')) {
+                        const team = value.split('_')[1];
+                        cell.style.background = teamColors[team] || '#94a3b8';
+                    } else {
+                        cell.style.background = 'rgba(255,255,255,0.08)';
+                    }
+
+                    cell.onclick = () => {
+                        if (!selectedHandCard) { alert('اول یک کارت از دست خود انتخاب کنید'); return; }
+                        sendAction('place_chip', { card_id: selectedHandCard.id, row: r, col: c });
+                        selectedHandCard = null;
+                    };
+                    boardContainer.appendChild(cell);
+                }
+            }
+        }
+
+        function declareTrump(suit) {
+            sendAction('declare_trump', { suit });
+            document.getElementById('hokm-trump-picker').style.display = 'none';
         }
 
         function sendLiveEmoji(emoji) {
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({ action: 'SEND_EMOJI', emoji: emoji }));
-            }
+            sendAction('send_emoji', { emoji });
         }
 
         function rollDice() {
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({ action: 'ROLL_DICE' }));
-            }
+            sendAction('roll_dice', {});
         }
 
         function showFloatingEmoji(emoji) {
@@ -640,7 +777,7 @@
         // ---------------------------------------------------------
         async function spinWheel() {
             try {
-                const res = await fetch(`/api/economy/spin-wheel?initData=${encodeURIComponent(tg?.initData || "")}`, { method: 'POST' });
+                const res = await authFetch('/api/economy/spin-wheel', { method: 'POST' });
                 const data = await res.json();
                 
                 if (res.ok) {
@@ -665,7 +802,7 @@
 
         async function claimDaily() {
             try {
-                const res = await fetch(`/api/economy/daily-reward?initData=${encodeURIComponent(tg?.initData || "")}`, { method: 'POST' });
+                const res = await authFetch('/api/economy/daily-reward', { method: 'POST' });
                 const data = await res.json();
                 if (res.ok) {
                     alert(`پاداش روزانه ${data.reward} سکه دریافت شد!`);
@@ -685,7 +822,7 @@
         // ---------------------------------------------------------
         async function loadAdminStats() {
             try {
-                const res = await fetch(`/api/admin/stats?admin_id=${currentUser.id}`);
+                const res = await authFetch('/api/admin/stats');
                 if (res.ok) {
                     const data = await res.json();
                     document.getElementById('stat-users').innerText = data.total_users;
