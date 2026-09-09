@@ -349,12 +349,23 @@ async def spin_wheel(user: User = Depends(get_current_user), db: Session = Depen
             raise HTTPException(status_code=400, detail="سکه کافی ندارید!")
 
         user.coins -= cost
-        prizes = [50, 100, 250, 500, 1000, "skin_gold"]
-        won = random.choice(prizes)
+
+        # جوایز با احتمال وزن‌دار، نه یکسان. نسخه‌ی قبلی هر ۶ جایزه رو با
+        # شانس مساوی انتخاب می‌کرد و میانگین برد هر چرخش ~۲۱۶ سکه سود خالص
+        # بود (یعنی گردونه یه ماشین تضمینی پول‌سازی بود، نه شانسی). این
+        # نسخه مثل یه گردونه‌ی واقعی طراحی شده: جوایز کوچیک محتمل‌تر،
+        # جوایز بزرگ کمیاب، و میانگین کلی کمی به ضرر بازیکنه (~۲۰٪-)
+        # تا با اسپم‌کردن نتونه سکه‌ی نامحدود تولید کنه.
+        prize_options = [0, 30, 80, 150, 400, 1000, "skin_gold"]
+        prize_weights = [35, 25, 20, 12, 6, 1.5, 0.5]
+        won = random.choices(prize_options, weights=prize_weights, k=1)[0]
 
         if isinstance(won, int):
             user.coins += won
-            msg = f"شما {won} سکه برنده شدید!"
+            if won == 0:
+                msg = "شانس این دور باهات یار نبود. دوباره امتحان کن!"
+            else:
+                msg = f"شما {won} سکه برنده شدید!"
             net_amount = won - cost
         else:
             user.card_back_skin = "gold"
