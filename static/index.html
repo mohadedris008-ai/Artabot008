@@ -376,13 +376,20 @@
         #arena-tab {
             padding: 0;
             background: radial-gradient(circle at center, var(--felt-emerald-center) 0%, #032a1f 65%, var(--felt-emerald-edge) 100%);
-            display: none;
             flex-direction: column;
             justify-content: space-between;
             position: absolute;
             inset: 0;
             box-shadow: inset 0 0 100px rgba(0, 0, 0, 0.85);
         }
+
+        /* مهم: قانون display اینجا عمداً حذف شد. #arena-tab (سلکتور ID)
+           specificity بالاتری از .tab-content.active (سلکتور کلاس) داشت،
+           پس همیشه با display:none این‌جا برنده می‌شد و کلاس "active" که
+           با جاوااسکریپت اضافه می‌شد هیچ‌وقت واقعاً نمایشش نمی‌داد — این
+           همون علت اصلی "صفحه‌ی مشکی" بود؛ محتوا همیشه درست ساخته می‌شد
+           ولی با این قانون CSS مخفی می‌ماند. حالا کنترل نمایش/عدم‌نمایش
+           فقط با .tab-content / .tab-content.active انجام می‌شود. */
 
         /* Ornate Gold Border for Felt Table */
         #arena-tab::before {
@@ -670,17 +677,73 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 16px;
-            padding: 24px;
+            gap: 18px;
+            padding: 32px 24px;
             text-align: center;
+            width: 100%;
+            position: relative;
+            z-index: 2;
         }
 
-        .waiting-spinner {
-            width: 54px;
-            height: 54px;
+        /* حلقه‌ی مرکزی نورانی: به‌جای یک اسپینر ساده و کم‌رنگ، یک نماد
+           بزرگ و واضح که از فاصله هم مشخصه صفحه "در حال کار" است، نه خالی. */
+        .waiting-orb-wrap {
+            position: relative;
+            width: 132px;
+            height: 132px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .waiting-orb-ring {
+            position: absolute;
+            inset: 0;
             border-radius: 50%;
-            border: 3px solid rgba(212, 175, 55, 0.2);
+            border: 2px solid rgba(230, 183, 71, 0.35);
+            animation: waitingPulse 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        .waiting-orb-ring.ring-2 {
+            animation-delay: 0.7s;
+        }
+
+        .waiting-orb-ring.ring-3 {
+            animation-delay: 1.4s;
+        }
+
+        @keyframes waitingPulse {
+            0% { transform: scale(0.55); opacity: 0.9; }
+            80% { opacity: 0; }
+            100% { transform: scale(1); opacity: 0; }
+        }
+
+        .waiting-orb-core {
+            position: relative;
+            width: 78px;
+            height: 78px;
+            border-radius: 50%;
+            background: var(--gold-gradient);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 34px;
+            box-shadow: 0 0 28px rgba(223, 167, 50, 0.55), inset 0 2px 6px rgba(255,255,255,0.35);
+            animation: waitingBreathe 1.8s ease-in-out infinite;
+        }
+
+        @keyframes waitingBreathe {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.06); }
+        }
+
+        .waiting-spinner-ring {
+            position: absolute;
+            inset: -10px;
+            border-radius: 50%;
+            border: 3px solid transparent;
             border-top-color: var(--accent-gold-primary);
+            border-right-color: rgba(230, 183, 71, 0.35);
             animation: waitingSpin 1s linear infinite;
         }
 
@@ -689,39 +752,79 @@
         }
 
         .waiting-title {
-            font-size: 15px;
+            font-size: 19px;
             font-weight: 800;
             color: var(--text-gold);
+            letter-spacing: 0.2px;
         }
 
         .waiting-subtitle {
-            font-size: 12px;
+            font-size: 13.5px;
+            font-weight: 600;
+            color: #cbd5e1;
+        }
+
+        .waiting-subtitle b {
+            color: var(--accent-gold-primary);
+            font-weight: 800;
+        }
+
+        .waiting-hint {
+            font-size: 11.5px;
             color: var(--text-sub);
+            max-width: 240px;
+            line-height: 1.6;
         }
 
         .waiting-seats {
             display: flex;
-            gap: 10px;
-            margin-top: 4px;
+            gap: 12px;
+            margin-top: 6px;
         }
 
         .waiting-seat {
-            width: 40px;
-            height: 40px;
+            width: 46px;
+            height: 46px;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 18px;
-            border: 2px solid rgba(255,255,255,0.12);
+            font-size: 20px;
+            border: 2px dashed rgba(255,255,255,0.18);
             background: rgba(255,255,255,0.04);
+            color: var(--text-sub);
+            transition: all 0.3s ease;
         }
 
         .waiting-seat.filled {
-            border-color: var(--accent-gold-primary);
+            border: 2px solid var(--accent-gold-primary);
+            border-style: solid;
             background: var(--gold-gradient);
             color: #0b0f19;
-            box-shadow: 0 0 12px rgba(223, 167, 50, 0.5);
+            box-shadow: 0 0 16px rgba(223, 167, 50, 0.6);
+            animation: seatPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        @keyframes seatPop {
+            0% { transform: scale(0.5); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .waiting-progress-track {
+            width: 200px;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255,255,255,0.08);
+            overflow: hidden;
+            margin-top: 2px;
+        }
+
+        .waiting-progress-fill {
+            height: 100%;
+            border-radius: 3px;
+            background: var(--gold-gradient);
+            transition: width 0.5s ease;
+            box-shadow: 0 0 8px rgba(223, 167, 50, 0.6);
         }
 
         /* Hokm Trump Picker Modal */
@@ -1880,21 +1983,31 @@
             const joined = (state.players || []).length;
             const catalogEntry = gamesCatalog[state.game_type];
             const needed = catalogEntry?.max_players || joined || 1;
+            const gameIcon = catalogEntry?.icon || '♠';
+            const pct = Math.min(100, Math.round((joined / needed) * 100));
 
             let seatsHtml = '';
             for (let i = 0; i < needed; i++) {
-                seatsHtml += `<div class="waiting-seat ${i < joined ? 'filled' : ''}">${i < joined ? '♠' : '؟'}</div>`;
+                seatsHtml += `<div class="waiting-seat ${i < joined ? 'filled' : ''}">${i < joined ? '✓' : '؟'}</div>`;
             }
 
             tableContainer.innerHTML = `
                 <div class="waiting-room">
-                    <div class="waiting-spinner"></div>
+                    <div class="waiting-orb-wrap">
+                        <div class="waiting-orb-ring"></div>
+                        <div class="waiting-orb-ring ring-2"></div>
+                        <div class="waiting-orb-ring ring-3"></div>
+                        <div class="waiting-spinner-ring"></div>
+                        <div class="waiting-orb-core">${gameIcon}</div>
+                    </div>
                     <div class="waiting-title">در انتظار بازیکنان دیگر...</div>
-                    <div class="waiting-subtitle">${joined} از ${needed} بازیکن وارد میز شده‌اند</div>
+                    <div class="waiting-subtitle"><b>${joined}</b> از <b>${needed}</b> بازیکن وارد میز شده‌اند</div>
+                    <div class="waiting-progress-track"><div class="waiting-progress-fill" style="width:${pct}%"></div></div>
                     <div class="waiting-seats">${seatsHtml}</div>
+                    <div class="waiting-hint">به محض تکمیل ظرفیت، بازی به‌صورت خودکار شروع می‌شود و کارت‌ها پخش می‌گردد</div>
                 </div>
             `;
-            handContainer.innerHTML = '<div style="color:var(--text-sub); font-size:12px;">به محض تکمیل ظرفیت، کارت‌ها پخش می‌شود</div>';
+            handContainer.innerHTML = '';
         }
 
         function renderSequenceBoard(state) {
