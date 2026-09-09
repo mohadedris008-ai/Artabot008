@@ -994,6 +994,161 @@
                 transform: translateY(100vh) rotateX(720deg) rotateZ(360deg);
             }
         }
+        /* Level Badge on Avatar */
+        .level-badge {
+            position: absolute;
+            bottom: -4px;
+            right: -4px;
+            background: var(--gold-gradient);
+            color: #0b0f19;
+            font-size: 9.5px;
+            font-weight: 900;
+            min-width: 18px;
+            height: 18px;
+            padding: 0 4px;
+            border-radius: 10px;
+            border: 2px solid var(--bg-deep);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Cinzel', 'Vazirmatn', sans-serif;
+        }
+
+        .avatar-inner img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 50%;
+        }
+
+        /* VIP Club Tab */
+        .vip-level-card {
+            background: linear-gradient(135deg, rgba(230, 183, 71, 0.18) 0%, rgba(16, 24, 38, 0.85) 100%);
+            border: 1px solid rgba(212, 175, 55, 0.35);
+            border-radius: var(--radius-lg);
+            padding: 18px;
+            text-align: center;
+            margin-bottom: 16px;
+            box-shadow: var(--card-shadow);
+        }
+
+        .vip-level-number {
+            font-family: 'Cinzel', 'Vazirmatn', sans-serif;
+            font-size: 32px;
+            font-weight: 900;
+            background: var(--gold-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            line-height: 1;
+        }
+
+        .vip-xp-bar-track {
+            width: 100%;
+            height: 10px;
+            border-radius: 6px;
+            background: rgba(255,255,255,0.08);
+            overflow: hidden;
+            margin-top: 10px;
+            border: 1px solid rgba(212, 175, 55, 0.2);
+        }
+
+        .vip-xp-bar-fill {
+            height: 100%;
+            background: var(--gold-gradient);
+            border-radius: 6px;
+            transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+            box-shadow: 0 0 8px rgba(245, 184, 52, 0.6);
+        }
+
+        .vip-perk-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            background: var(--bg-card);
+            border: 1px solid var(--bg-card-border);
+            border-radius: var(--radius-md);
+            margin-bottom: 10px;
+        }
+
+        .vip-perk-row.locked {
+            opacity: 0.5;
+        }
+
+        .vip-perk-icon {
+            font-size: 22px;
+            width: 36px;
+            text-align: center;
+        }
+
+        .vip-perk-text {
+            flex: 1;
+            font-size: 12.5px;
+        }
+
+        .vip-perk-text .perk-title {
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 2px;
+        }
+
+        .vip-perk-text .perk-sub {
+            color: var(--text-sub);
+            font-size: 11px;
+        }
+
+        .vip-section-title {
+            font-size: 13px;
+            font-weight: 800;
+            color: var(--text-gold);
+            margin: 18px 0 10px;
+        }
+
+        .avatar-icon-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 8px;
+        }
+
+        .avatar-icon-option {
+            aspect-ratio: 1;
+            border-radius: 12px;
+            background: var(--bg-card);
+            border: 1px solid var(--bg-card-border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .avatar-icon-option.selected {
+            border-color: var(--accent-gold-primary);
+            box-shadow: var(--gold-glow);
+            transform: scale(1.08);
+        }
+
+        .username-form {
+            display: flex;
+            gap: 8px;
+        }
+
+        .username-input {
+            flex: 1;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            border-radius: var(--radius-md);
+            padding: 10px 14px;
+            color: #fff;
+            font-size: 13px;
+            font-family: 'Vazirmatn', sans-serif;
+        }
+
+        .username-input:focus {
+            outline: none;
+            border-color: var(--accent-gold-primary);
+        }
     </style>
 </head>
 <body>
@@ -1003,6 +1158,7 @@
         <div class="user-profile">
             <div class="avatar-frame">
                 <div class="avatar-inner" id="ui-avatar">U</div>
+                <div class="level-badge" id="ui-level-badge">1</div>
             </div>
             <div class="user-info-text">
                 <div id="ui-username">بازیکن</div>
@@ -1079,6 +1235,59 @@
             </div>
         </div>
 
+        <!-- Tab: VIP Club (سطح/XP، آواتار، تغییر نام) -->
+        <div id="tab-vip" class="tab-content">
+            <div class="vip-level-card">
+                <div class="vip-level-number" id="vip-level-number">۱</div>
+                <div style="font-size: 11.5px; color: var(--text-sub); margin-top: 2px;">سطح فعلی</div>
+                <div class="vip-xp-bar-track">
+                    <div class="vip-xp-bar-fill" id="vip-xp-bar-fill" style="width: 0%;"></div>
+                </div>
+                <div style="font-size: 10.5px; color: var(--text-sub); margin-top: 6px;" id="vip-xp-label">۰ / ۱۰۰ XP</div>
+            </div>
+
+            <div class="vip-section-title">🎖 امتیازهای کلوپ اشرافی</div>
+            <div class="vip-perk-row">
+                <div class="vip-perk-icon">👤</div>
+                <div class="vip-perk-text">
+                    <div class="perk-title">آواتار پیش‌فرض</div>
+                    <div class="perk-sub">از همون سطح ۱ فعاله</div>
+                </div>
+            </div>
+            <div class="vip-perk-row" id="vip-perk-icon-row">
+                <div class="vip-perk-icon">🃏</div>
+                <div class="vip-perk-text">
+                    <div class="perk-title">آیکون‌های اختصاصی آواتار</div>
+                    <div class="perk-sub" id="vip-perk-icon-sub">از سطح ۳ باز می‌شود</div>
+                </div>
+            </div>
+            <div class="vip-perk-row" id="vip-perk-photo-row">
+                <div class="vip-perk-icon">📷</div>
+                <div class="vip-perk-text">
+                    <div class="perk-title">عکس پروفایل تلگرام به‌عنوان آواتار</div>
+                    <div class="perk-sub" id="vip-perk-photo-sub">از سطح ۷ باز می‌شود</div>
+                </div>
+            </div>
+
+            <div class="vip-section-title">🎨 انتخاب آواتار</div>
+            <div class="avatar-icon-grid" id="avatar-icon-grid">
+                <!-- با renderVipTab() پر می‌شود -->
+            </div>
+
+            <div id="vip-photo-section" style="margin-top: 14px; display:none;">
+                <button class="btn-gold" id="vip-use-photo-btn" onclick="useTelegramPhotoAsAvatar()">
+                    <span>📷</span><span>استفاده از عکس پروفایل تلگرام</span>
+                </button>
+            </div>
+
+            <div class="vip-section-title">✏️ تغییر نام نمایشی</div>
+            <div class="username-form">
+                <input type="text" class="username-input" id="username-input" placeholder="نام جدید..." maxlength="24">
+                <button class="btn-gold" style="width:auto; padding: 10px 16px;" onclick="changeUsername()">ثبت</button>
+            </div>
+            <div style="font-size: 10.5px; color: var(--text-sub); margin-top: 6px;" id="username-cost-hint"></div>
+        </div>
+
         <!-- Tab 4: Active Game Arena (Royal Felt Table) -->
         <div id="arena-tab" class="tab-content">
             <div class="arena-header">
@@ -1130,6 +1339,10 @@
         <div class="nav-item" onclick="switchTab('tab-shop', this)">
             <div class="icon">🎡</div>
             <div>گردونه & فروشگاه</div>
+        </div>
+        <div class="nav-item" onclick="switchTab('tab-vip', this); renderVipTab();">
+            <div class="icon">👑</div>
+            <div>کلوپ اشرافی</div>
         </div>
         <div class="nav-item" id="nav-admin-btn" style="display: none;" onclick="switchTab('tab-admin', this)">
             <div class="icon">🛡</div>
@@ -1263,11 +1476,25 @@
             }
         }
 
+        function renderHeaderAvatar() {
+            const avatarEl = document.getElementById('ui-avatar');
+            if (currentUser.avatar_photo_url) {
+                avatarEl.innerHTML = `<img src="${currentUser.avatar_photo_url}" alt="avatar">`;
+            } else if (currentUser.avatar_skin && currentUser.avatar_skin !== 'default') {
+                avatarEl.innerHTML = '';
+                avatarEl.innerText = currentUser.avatar_skin;
+            } else {
+                avatarEl.innerHTML = '';
+                avatarEl.innerText = (currentUser.first_name || "U").charAt(0).toUpperCase();
+            }
+            document.getElementById('ui-level-badge').innerText = currentUser.level || 1;
+        }
+
         function updateUI() {
             document.getElementById('ui-username').innerText = currentUser.first_name || "بازیکن";
-            document.getElementById('ui-avatar').innerText = (currentUser.first_name || "U").charAt(0).toUpperCase();
             document.getElementById('ui-coins').innerText = Number(currentUser.coins || 0).toLocaleString();
             document.getElementById('ui-gems').innerText = Number(currentUser.gems || 0).toLocaleString();
+            renderHeaderAvatar();
 
             if (currentUser.is_admin) {
                 document.getElementById('nav-admin-btn').style.display = 'flex';
@@ -1280,12 +1507,180 @@
                 const res = await authFetch('/api/user/me');
                 if (res.ok) {
                     const data = await res.json();
-                    currentUser.coins = data.coins;
-                    currentUser.gems = data.gems;
+                    Object.assign(currentUser, data);
                     updateUI();
+                    renderVipTab();
                     pulseBalance();
                 }
             } catch (e) {}
+        }
+
+        // ---------------------------------------------------------
+        // کلوپ اشرافی: سطح/XP، انتخاب آواتار، تغییر نام
+        // ---------------------------------------------------------
+        function renderVipTab() {
+            if (!currentUser) return;
+
+            document.getElementById('vip-level-number').innerText = Number(currentUser.level || 1).toLocaleString('fa-IR');
+            const xpProgress = currentUser.xp_progress || 0;
+            const xpToNext = currentUser.xp_to_next_level || 100;
+            document.getElementById('vip-xp-bar-fill').style.width = `${Math.min(100, (xpProgress / xpToNext) * 100)}%`;
+            document.getElementById('vip-xp-label').innerText = `${xpProgress} / ${xpToNext} XP`;
+
+            const iconUnlockLevel = currentUser.avatar_icon_unlock_level || 3;
+            const photoUnlockLevel = currentUser.avatar_photo_unlock_level || 7;
+            const level = currentUser.level || 1;
+
+            const iconRow = document.getElementById('vip-perk-icon-row');
+            const iconSub = document.getElementById('vip-perk-icon-sub');
+            if (level >= iconUnlockLevel) {
+                iconRow.classList.remove('locked');
+                iconSub.innerText = 'باز شده - هر بار تغییرش ۵۰ سکه هزینه دارد';
+            } else {
+                iconRow.classList.add('locked');
+                iconSub.innerText = `از سطح ${iconUnlockLevel} باز می‌شود`;
+            }
+
+            const photoRow = document.getElementById('vip-perk-photo-row');
+            const photoSub = document.getElementById('vip-perk-photo-sub');
+            if (level >= photoUnlockLevel) {
+                photoRow.classList.remove('locked');
+                photoSub.innerText = 'باز شده - فعال‌سازی ۲۰۰ سکه هزینه دارد';
+            } else {
+                photoRow.classList.add('locked');
+                photoSub.innerText = `از سطح ${photoUnlockLevel} باز می‌شود`;
+            }
+
+            // شبکه‌ی انتخاب آیکون آواتار
+            const grid = document.getElementById('avatar-icon-grid');
+            grid.innerHTML = '';
+            const icons = ['default', ...(currentUser.available_avatar_icons || [])];
+            icons.forEach(icon => {
+                const el = document.createElement('div');
+                el.className = 'avatar-icon-option';
+                el.innerText = icon === 'default' ? '👤' : icon;
+                const isSelected = (currentUser.avatar_skin || 'default') === icon && !currentUser.avatar_photo_url;
+                if (isSelected) el.classList.add('selected');
+                const locked = icon !== 'default' && level < iconUnlockLevel;
+                if (locked) el.style.opacity = '0.35';
+                el.onclick = () => selectAvatarIcon(icon, locked);
+                grid.appendChild(el);
+            });
+
+            // بخش عکس پروفایل تلگرام
+            const photoSection = document.getElementById('vip-photo-section');
+            const tgPhoto = tg?.initDataUnsafe?.user?.photo_url;
+            if (level >= photoUnlockLevel && tgPhoto) {
+                photoSection.style.display = 'block';
+                const btn = document.getElementById('vip-use-photo-btn');
+                if (currentUser.avatar_photo_url) {
+                    btn.innerHTML = '<span>🗑️</span><span>حذف عکس و بازگشت به آیکون (رایگان)</span>';
+                    btn.onclick = clearTelegramPhotoAvatar;
+                } else {
+                    btn.innerHTML = '<span>📷</span><span>استفاده از عکس پروفایل تلگرام (۲۰۰ سکه)</span>';
+                    btn.onclick = useTelegramPhotoAsAvatar;
+                }
+            } else {
+                photoSection.style.display = 'none';
+            }
+
+            // وضعیت هزینه‌ی تغییر نام
+            const hint = document.getElementById('username-cost-hint');
+            hint.innerText = currentUser.can_change_username_free
+                ? 'این هفته یک تغییر نام رایگان داری.'
+                : `تغییر نام قبل از یک هفته از آخرین بار، ${currentUser.username_change_cost || 150} سکه هزینه دارد.`;
+        }
+
+        async function selectAvatarIcon(icon, locked) {
+            if (locked) {
+                alert('این آیکون هنوز برات باز نشده - سطح بیشتری لازمه.');
+                return;
+            }
+            try {
+                const res = await authFetch('/api/user/avatar/icon', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ icon }),
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    Object.assign(currentUser, data);
+                    currentUser.avatar_photo_url = null; // انتخاب آیکون یعنی از حالت عکس خارج شدیم
+                    updateUI();
+                    renderVipTab();
+                    playSound('win');
+                } else {
+                    alert(data.detail || 'خطا در تغییر آواتار');
+                }
+            } catch (e) {
+                alert('ارتباط با سرور برقرار نشد.');
+            }
+        }
+
+        async function useTelegramPhotoAsAvatar() {
+            const photoUrl = tg?.initDataUnsafe?.user?.photo_url;
+            if (!photoUrl) {
+                alert('عکس پروفایل تلگرام در دسترس نیست.');
+                return;
+            }
+            try {
+                const res = await authFetch('/api/user/avatar/photo', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ photo_url: photoUrl }),
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    Object.assign(currentUser, data);
+                    updateUI();
+                    renderVipTab();
+                    playSound('win');
+                } else {
+                    alert(data.detail || 'خطا در تنظیم عکس آواتار');
+                }
+            } catch (e) {
+                alert('ارتباط با سرور برقرار نشد.');
+            }
+        }
+
+        async function clearTelegramPhotoAvatar() {
+            try {
+                const res = await authFetch('/api/user/avatar/photo/clear', { method: 'POST' });
+                const data = await res.json();
+                if (res.ok) {
+                    Object.assign(currentUser, data);
+                    updateUI();
+                    renderVipTab();
+                }
+            } catch (e) {}
+        }
+
+        async function changeUsername() {
+            const input = document.getElementById('username-input');
+            const newName = input.value.trim();
+            if (newName.length < 2) {
+                alert('نام باید حداقل ۲ کاراکتر باشد.');
+                return;
+            }
+            try {
+                const res = await authFetch('/api/user/username', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ new_name: newName }),
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    Object.assign(currentUser, data);
+                    updateUI();
+                    renderVipTab();
+                    input.value = '';
+                    alert(data.message);
+                } else {
+                    alert(data.detail || 'خطا در تغییر نام');
+                }
+            } catch (e) {
+                alert('ارتباط با سرور برقرار نشد.');
+            }
         }
 
         // ---------------------------------------------------------
@@ -1606,8 +2001,10 @@
                 const data = await res.json();
                 if (res.ok) {
                     alert(`پاداش روزانه ${data.reward} سکه دریافت شد!`);
+                    Object.assign(currentUser, data);
                     currentUser.coins = data.new_coins;
                     updateUI();
+                    renderVipTab();
                     pulseBalance();
                     playSound('win');
                 } else {
