@@ -1,5 +1,6 @@
 fastapi
-uvicorn
+uvicorn[standard]
+websockets
 aiogram>=3.0.0
 httpx
 jinja2
