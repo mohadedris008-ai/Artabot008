@@ -23,20 +23,7 @@ if DATABASE_URL.startswith("sqlite") and os.getenv("ENV", "development") == "pro
     )
 
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
-# pool_pre_ping: قبل از استفاده از هر کانکشن ذخیره‌شده در pool، یک پینگ سبک
-# می‌زند تا مطمئن شود کانکشن هنوز زنده است. بدون این، وقتی سرویس دیتابیس
-# (مثل Neon که سرورلس است) یک کانکشن idle را از سمت خودش می‌بندد،
-# SQLAlchemy همچنان فکر می‌کند کانکشن سالم است و اولین کوئری بعد از یک
-# دوره‌ی سکوت با خطای "SSL connection has been closed unexpectedly" شکست
-# می‌خورد.
-# pool_recycle: هر کانکشنی که عمرش از این مقدار (ثانیه) بیشتر شود، قبل از
-# استفاده‌ی مجدد بسته و با یک کانکشن تازه جایگزین می‌شود؛ این هم از بسته
-# شدن ناگهانی کانکشن‌های خیلی قدیمی توسط سرور دیتابیس جلوگیری می‌کند.
-engine_kwargs = {"connect_args": connect_args}
-if not DATABASE_URL.startswith("sqlite"):
-    engine_kwargs["pool_pre_ping"] = True
-    engine_kwargs["pool_recycle"] = 280
-engine = create_engine(DATABASE_URL, **engine_kwargs)
+engine = create_engine(DATABASE_URL, connect_args=connect_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

@@ -94,6 +94,10 @@ class BaseGame:
         self.is_finished: bool = False
         self.winner: Optional[str] = None
         self.turn_deadline = time.time() + 30
+        # وقتی بازیکنی وسط بازی قطع اتصال می‌شود، به‌جای اینکه بازی برای
+        # همیشه منتظر نوبت او بماند، به‌صورت خودکار توسط یک هوش مصنوعی
+        # ساده‌ی قانون‌محور (rule-based) کنترل می‌شود تا بازی ادامه پیدا کند.
+        self.bot_controlled: Dict[str, bool] = {}
 
     def add_player(self, user_id: str, username: str, avatar: str = "👤") -> bool:
         if user_id in self.players:
@@ -109,6 +113,7 @@ class BaseGame:
             "score": 0,
             "is_connected": True
         }
+        self.bot_controlled[user_id] = False
         return True
 
     def get_current_turn_player(self) -> Optional[str]:
@@ -120,6 +125,14 @@ class BaseGame:
         if self.players:
             self.current_turn_index = (self.current_turn_index + 1) % len(self.players)
             self.turn_deadline = time.time() + 30
+
+    def get_bot_action(self, user_id: str) -> Optional[Tuple[str, Dict[str, Any]]]:
+        """
+        وقتی نوبتِ بازیکنی است که الان bot_controlled شده، این متد باید یک
+        حرکتِ قانونی (action, payload) برای او برگرداند. پیاده‌سازی پیش‌فرض
+        هیچ حرکتی ندارد؛ هر زیرکلاس بازی این را با منطق خودش override می‌کند.
+        """
+        return None
 
     def get_player_view(self, user_id: str) -> Dict[str, Any]:
         return {
@@ -294,6 +307,27 @@ class PasurGame(BaseGame):
         })
         return data
 
+    def get_bot_action(self, user_id: str) -> Optional[Tuple[str, Dict[str, Any]]]:
+        hand = self.hands.get(user_id, [])
+        if not hand:
+            return None
+        # اولویت با کارتی که چیزی از میز جمع می‌کند (سرباز/جفت هم‌ارزش/جمع ۱۱)؛
+        # در غیر این صورت یک کارت تصادفی بازی می‌شود (حرکت قانونی همیشه هست).
+        for card in hand:
+            if card["rank"] == "J":
+                non_court = [c for c in self.table_cards if c["rank"] not in ("K", "Q")]
+                if non_court:
+                    return "play_card", {"card_id": card["id"]}
+            elif card["rank"] in ("Q", "K"):
+                if any(c["rank"] == card["rank"] for c in self.table_cards):
+                    return "play_card", {"card_id": card["id"]}
+            else:
+                needed = 11 - card["value"]
+                numeric_cards = [c for c in self.table_cards if c["rank"] not in ("J", "Q", "K")]
+                if self._find_sum_combinations(needed, numeric_cards):
+                    return "play_card", {"card_id": card["id"]}
+        return "play_card", {"card_id": hand[0]["id"]}
+
 # ==================== ۲. سکوئنس (Sequence) ====================
 SEQUENCE_LAYOUT = [
     ["W", "2♠", "3♠", "4♠", "5♠", "6♠", "7♠", "8♠", "9♠", "W"],
@@ -461,6 +495,43 @@ class SequenceGame(BaseGame):
         })
         return data
 
+    def get_bot_action(self, user_id: str) -> Optional[Tuple[str, Dict[str, Any]]]:
+        hand = self.hands.get(user_id, [])
+        if not hand:
+            return None
+        team = self.player_teams.get(user_id, 0)
+
+        def cell_owner(r, c):
+            return self.board[r][c]
+
+        # اول تلاش برای گذاشتن یک مهره‌ی معمولی/جوکر دوچشم در یک خانه‌ی خالی
+        for card in hand:
+            is_two_eyed = card["rank"] == "J" and card["suit"] in self.TWO_EYED_JACK_SUITS
+            is_one_eyed = card["rank"] == "J" and card["suit"] in self.ONE_EYED_JACK_SUITS
+            if is_one_eyed:
+                continue  # اول انواع دیگر را امتحان می‌کنیم
+            if is_two_eyed:
+                for r in range(10):
+                    for c in range(10):
+                        if cell_owner(r, c) is None:
+                            return "place_chip", {"card_id": card["id"], "row": r, "col": c}
+                continue
+            key = self._card_key(card)
+            for r in range(10):
+                for c in range(10):
+                    if SEQUENCE_LAYOUT[r][c] == key and cell_owner(r, c) is None:
+                        return "place_chip", {"card_id": card["id"], "row": r, "col": c}
+
+        # اگر هیچ حرکت عادی ممکن نبود، جوکر یک‌چشم را برای برداشتن یک مهره‌ی حریف امتحان کن
+        for card in hand:
+            if card["rank"] == "J" and card["suit"] in self.ONE_EYED_JACK_SUITS:
+                for r in range(10):
+                    for c in range(10):
+                        owner = cell_owner(r, c)
+                        if owner is not None and owner != "W" and owner != f"team_{team}":
+                            return "place_chip", {"card_id": card["id"], "row": r, "col": c}
+        return None
+
 # ==================== ۳. حکم کامل (ترکیب کد اول درون ساختار استاندارد) ====================
 class HokmCard:
     def __init__(self, suit_char: str, rank: int):
@@ -581,6 +652,21 @@ class HokmGame(BaseGame):
             "deal_phase": self.deal_phase
         })
         return data
+
+    def get_bot_action(self, user_id: str) -> Optional[Tuple[str, Dict[str, Any]]]:
+        if self.deal_phase == 0:
+            if user_id == self.hakim:
+                return "declare_trump", {"suit": random.choice(SUITS)}
+            return None
+        hand = self.hands.get(user_id, [])
+        if not hand:
+            return None
+        if self.lead_suit:
+            same_suit = [c for c in hand if c.suit_char == self.lead_suit]
+            chosen = same_suit[0] if same_suit else hand[0]
+        else:
+            chosen = hand[0]
+        return "play_card", {"suit": chosen.suit_char, "rank": chosen.rank}
 
 class GameEngineFactory:
     REGISTRY = {"pasur": PasurGame, "sequence": SequenceGame, "hokm": HokmGame}

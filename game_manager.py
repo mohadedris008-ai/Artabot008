@@ -96,6 +96,11 @@ class GameConnectionManager:
 
             await websocket.accept()
             room.connections[user_id] = websocket
+            # بازیکن دوباره وصل شده: دیگر نیازی نیست هوش مصنوعی جای او بازی کند
+            if user_id in room.engine.player_info:
+                room.engine.player_info[user_id]["is_connected"] = True
+            if hasattr(room.engine, "bot_controlled"):
+                room.engine.bot_controlled[user_id] = False
 
             just_started = False
             if not room.engine.is_started and room.is_full:
@@ -117,6 +122,44 @@ class GameConnectionManager:
             queue = self._waiting.get(room.game_type, [])
             if room.room_id in queue:
                 queue.remove(room.room_id)
+        elif room.engine.is_started and not room.engine.is_finished:
+            # بازی از قبل شروع شده و هنوز تمام نشده: به‌جای اینکه بازی برای
+            # همیشه منتظر نوبتِ بازیکنِ قطع‌شده بماند، از این لحظه هوش
+            # مصنوعی به‌جای او بازی می‌کند (تا وقتی دوباره وصل شود).
+            if hasattr(room.engine, "bot_controlled"):
+                room.engine.bot_controlled[user_id] = True
+
+    # ------------------------------------------------------------
+    # وقتی نوبتِ بازیکنِ bot_controlled برسد، به‌جای او یک حرکتِ قانونی
+    # انجام می‌دهد؛ این کار را پشت‌سرهم تکرار می‌کند تا نوبت به یک
+    # بازیکنِ واقعی (متصل) برسد یا بازی تمام شود، تا زنجیره‌ای از چند
+    # بازیکنِ قطع‌شده هم بازی را برای همیشه معلق نگه ندارد.
+    # ------------------------------------------------------------
+    async def run_bot_turns(self, room: Room, max_moves: int = 200) -> List[Dict[str, Any]]:
+        results: List[Dict[str, Any]] = []
+        bot_controlled = getattr(room.engine, "bot_controlled", {})
+        for _ in range(max_moves):
+            if not room.engine.is_started or room.engine.is_finished:
+                break
+            current = room.engine.get_current_turn_player()
+            if current is None or not bot_controlled.get(current):
+                break
+            async with room.lock:
+                action = room.engine.get_bot_action(current)
+                if action is None:
+                    # هیچ حرکت قانونی‌ای پیدا نشد (نباید معمولاً پیش بیاید)؛
+                    # برای جلوگیری از گیر کردن بازی، نوبت را دستی رد می‌کنیم.
+                    room.engine.advance_turn()
+                    continue
+                move_action, payload = action
+                result = room.engine.handle_action(current, move_action, payload)
+            results.append(result)
+            if result.get("status") == "error":
+                # حرکت هوش مصنوعی نامعتبر بود؛ برای جلوگیری از حلقه‌ی
+                # بی‌نهایت، نوبت را دستی رد می‌کنیم و ادامه می‌دهیم.
+                async with room.lock:
+                    room.engine.advance_turn()
+        return results
 
     # ------------------------------------------------------------
     # اکشن‌های بازی — همیشه از موتور سمت سرور عبور می‌کنند

@@ -16,8 +16,12 @@ from database import get_db, init_db, User, Transaction, SessionLocal
 from telegram_auth import verify_telegram_init_data, create_session_token, verify_session_token, SESSION_SECRET
 from game_manager import ws_manager
 from game_logic import GAME_CATALOG
+from bot import start_bot_polling, stop_bot_polling, get_bot_token_status
 
 app = FastAPI(title="Telegram Game Hub Platform")
+
+# تسک پس‌زمینه‌ی پولینگ ربات تلگرام (روی startup ساخته و روی shutdown لغو می‌شود)
+_bot_polling_task: Optional[asyncio.Task] = None
 
 # ---------------------------------------------------------
 # سیستم سطح (Level/XP) و قفل‌های وابسته به سطح برای آواتار/تغییر نام
@@ -92,6 +96,25 @@ def _get_user_lock(user_id: int) -> asyncio.Lock:
 @app.on_event("startup")
 async def on_startup():
     init_db()
+    if get_bot_token_status() == "missing":
+        print(
+            "\n"
+            "!!! هشدار: متغیر محیطی BOT_TOKEN تنظیم نشده — ربات تلگرام به\n"
+            "!!! پیام‌هایی مثل /start جواب نخواهد داد (فقط خود وب‌اپ کار\n"
+            "!!! می‌کند). برای فعال‌سازی، BOT_TOKEN را در Environment ست کنید.\n"
+        )
+        return
+    global _bot_polling_task
+    # پولینگ ربات به‌صورت یک تسک پس‌زمینه‌ی جدا اجرا می‌شود تا مسدود شدنش
+    # جلوی بالا آمدن خود سرور وب (FastAPI/uvicorn) را نگیرد.
+    _bot_polling_task = asyncio.create_task(start_bot_polling())
+
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    if _bot_polling_task is not None:
+        await stop_bot_polling()
+        _bot_polling_task.cancel()
 
 
 if os.path.exists("static"):
@@ -214,6 +237,32 @@ def _award_game_xp(db: Session, room):
     db.commit()
 
 
+async def _finish_game_and_notify(room):
+    """پرداخت جایزه + XP و اطلاع‌رسانی پایان بازی؛ چه بازی با حرکت یک
+    بازیکن واقعی تمام شده باشد چه با حرکت هوش مصنوعیِ جایگزینِ او."""
+    db = SessionLocal()
+    try:
+        _payout_winner(db, room)
+        _award_game_xp(db, room)
+    finally:
+        db.close()
+    await ws_manager.broadcast_raw(room, {"type": "GAME_OVER", "winner": room.engine.winner})
+
+
+async def _run_bots_and_maybe_finish(room):
+    """اگر نوبتِ فعلی به یک بازیکنِ bot_controlled (قطع‌شده) رسیده باشد،
+    هوش مصنوعی به‌جای او (و هر بازیکنِ قطع‌شده‌ی بعدی در زنجیره) حرکت
+    می‌کند تا نوبت به یک بازیکنِ واقعی برسد یا بازی تمام شود؛ در هر دو
+    حالت وضعیت جدید برای همه broadcast و در صورت پایان بازی جایزه/XP
+    پرداخت می‌شود."""
+    bot_results = await ws_manager.run_bot_turns(room)
+    if not bot_results:
+        return
+    await ws_manager.broadcast_state(room)
+    if room.engine.is_finished and not room.payout_done:
+        await _finish_game_and_notify(room)
+
+
 # ---------------------------------------------------------
 # وب‌سوکت اصلی بازی‌ها
 # مسیر بر اساس نوع بازی است (نه یک room_id ثابت که کلاینت انتخاب کند)؛
@@ -297,17 +346,20 @@ async def game_websocket_endpoint(
             if result and result.get("status") == "error":
                 await ws_manager.send_personal(room, user_id, {"type": "ACTION_ERROR", "message": result["message"]})
             if result and result.get("is_finished"):
-                db = SessionLocal()
-                try:
-                    _payout_winner(db, room)
-                    _award_game_xp(db, room)
-                finally:
-                    db.close()
-                await ws_manager.broadcast_raw(room, {"type": "GAME_OVER", "winner": room.engine.winner})
+                await _finish_game_and_notify(room)
+            elif not room.engine.is_finished:
+                # اگر بعد از این اکشن، نوبت به بازیکنِ قطع‌شده‌ای (bot_controlled)
+                # رسیده باشد (مثلاً حریفش هنوز آنلاین است ولی او قبلاً قطع شده)،
+                # هوش مصنوعی بلافاصله به‌جایش بازی می‌کند.
+                await _run_bots_and_maybe_finish(room)
 
     except WebSocketDisconnect:
         ws_manager.disconnect(room, user_id)
         await ws_manager.broadcast_raw(room, {"type": "PLAYER_LEFT", "user_id": user_id})
+        # از این لحظه ممکن است نوبت به همین بازیکنِ تازه‌قطع‌شده (یا حتی
+        # زنجیره‌ای از چند بازیکنِ قطع‌شده‌ی قبلی) برسد؛ به‌جایشان بازی می‌کنیم
+        # تا بازی هیچ‌وقت روی همان نفرات باقی‌مانده گیر نکند.
+        await _run_bots_and_maybe_finish(room)
 
 
 # ---------------------------------------------------------
