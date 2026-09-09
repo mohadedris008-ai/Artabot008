@@ -19,6 +19,56 @@ from game_logic import GAME_CATALOG
 
 app = FastAPI(title="Telegram Game Hub Platform")
 
+# ---------------------------------------------------------
+# سیستم سطح (Level/XP) و قفل‌های وابسته به سطح برای آواتار/تغییر نام
+# ---------------------------------------------------------
+LEVEL_XP_STEP = 100                # هر ۱۰۰ XP یک سطح بالا می‌رود
+XP_PER_GAME_PLAYED = 10
+XP_WIN_BONUS = 15                  # روی XP_PER_GAME_PLAYED جمع می‌شود (برنده جمعاً ۲۵ می‌گیرد)
+XP_DAILY_CLAIM = 5
+
+AVATAR_ICON_LEVEL_REQUIRED = 3
+AVATAR_ICON_COST = 50
+AVATAR_PHOTO_LEVEL_REQUIRED = 7
+AVATAR_PHOTO_COST = 200
+AVAILABLE_AVATAR_ICONS = ["🃏", "👑", "💎", "🦁", "🎲", "🔥", "⚜️", "🐉", "🎭"]
+
+USERNAME_FREE_COOLDOWN_DAYS = 7
+USERNAME_CHANGE_COST = 150         # هزینه‌ی تغییر نام زودتر از یک هفته
+
+
+def _award_xp(user: User, amount: int):
+    user.xp = (user.xp or 0) + amount
+    user.level = user.xp // LEVEL_XP_STEP + 1
+
+
+def _serialize_user(user: User) -> dict:
+    now = datetime.utcnow()
+    can_change_free = (
+        user.last_username_change is None
+        or (now - user.last_username_change) >= timedelta(days=USERNAME_FREE_COOLDOWN_DAYS)
+    )
+    xp = user.xp or 0
+    return {
+        "id": user.id,
+        "first_name": user.first_name,
+        "coins": user.coins,
+        "gems": user.gems,
+        "is_admin": user.is_admin,
+        "card_back_skin": user.card_back_skin,
+        "avatar_skin": user.avatar_skin,
+        "avatar_photo_url": user.avatar_photo_url,
+        "level": user.level or 1,
+        "xp": xp,
+        "xp_progress": xp % LEVEL_XP_STEP,
+        "xp_to_next_level": LEVEL_XP_STEP,
+        "can_change_username_free": can_change_free,
+        "username_change_cost": USERNAME_CHANGE_COST,
+        "avatar_icon_unlock_level": AVATAR_ICON_LEVEL_REQUIRED,
+        "avatar_photo_unlock_level": AVATAR_PHOTO_LEVEL_REQUIRED,
+        "available_avatar_icons": AVAILABLE_AVATAR_ICONS,
+    }
+
 if SESSION_SECRET == "change-me-in-production":
     print(
         "\n"
@@ -147,6 +197,23 @@ def _payout_winner(db: Session, room):
         db.commit()
 
 
+def _award_game_xp(db: Session, room):
+    """به همه‌ی بازیکنان یک بازی تمام‌شده XP می‌دهد (برنده کمی بیشتر).
+    مستقل از _payout_winner چون باید حتی برای بازی‌های بدون شرط‌بندی
+    (min_bet=0) هم اجرا شود."""
+    if room.xp_awarded:
+        return
+    room.xp_awarded = True
+
+    winner_id = room.engine.winner
+    user_ids = [int(uid) for uid in room.engine.players]
+    users = db.query(User).filter(User.id.in_(user_ids)).all()
+    for u in users:
+        amount = XP_PER_GAME_PLAYED + (XP_WIN_BONUS if str(u.id) == str(winner_id) else 0)
+        _award_xp(u, amount)
+    db.commit()
+
+
 # ---------------------------------------------------------
 # وب‌سوکت اصلی بازی‌ها
 # مسیر بر اساس نوع بازی است (نه یک room_id ثابت که کلاینت انتخاب کند)؛
@@ -233,6 +300,7 @@ async def game_websocket_endpoint(
                 db = SessionLocal()
                 try:
                     _payout_winner(db, room)
+                    _award_game_xp(db, room)
                 finally:
                     db.close()
                 await ws_manager.broadcast_raw(room, {"type": "GAME_OVER", "winner": room.engine.winner})
@@ -290,29 +358,139 @@ async def sync_user(payload: AuthPayload, db: Session = Depends(get_db)):
 
     token = create_session_token(user.id)
 
-    return {
-        "token": token,
-        "id": user.id,
-        "first_name": user.first_name,
-        "coins": user.coins,
-        "gems": user.gems,
-        "is_admin": user.is_admin,
-        "card_back_skin": user.card_back_skin,
-        "avatar_skin": user.avatar_skin,
-    }
+    return {"token": token, **_serialize_user(user)}
 
 
 @app.get("/api/user/me")
 async def get_me(user: User = Depends(get_current_user)):
-    return {
-        "id": user.id,
-        "first_name": user.first_name,
-        "coins": user.coins,
-        "gems": user.gems,
-        "is_admin": user.is_admin,
-        "card_back_skin": user.card_back_skin,
-        "avatar_skin": user.avatar_skin,
-    }
+    return _serialize_user(user)
+
+
+# ---------------------------------------------------------
+# REST API - تغییر نام نمایشی (یک‌بار در هفته رایگان، بیشتر از اون هزینه دارد)
+# ---------------------------------------------------------
+class UsernamePayload(BaseModel):
+    new_name: str
+
+
+@app.post("/api/user/username")
+async def change_username(
+    payload: UsernamePayload,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    async with _get_user_lock(user.id):
+        db.refresh(user)
+        new_name = payload.new_name.strip()
+
+        if not (2 <= len(new_name) <= 24):
+            raise HTTPException(status_code=400, detail="نام باید بین ۲ تا ۲۴ کاراکتر باشد.")
+        if "\n" in new_name or "\r" in new_name or "\t" in new_name:
+            raise HTTPException(status_code=400, detail="نام نامعتبر است.")
+
+        now = datetime.utcnow()
+        free = (
+            user.last_username_change is None
+            or (now - user.last_username_change) >= timedelta(days=USERNAME_FREE_COOLDOWN_DAYS)
+        )
+
+        if not free:
+            if user.coins < USERNAME_CHANGE_COST:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"تغییر نام زودتر از یک هفته از آخرین بار، {USERNAME_CHANGE_COST} "
+                        f"سکه هزینه دارد و سکه‌ی کافی ندارید."
+                    ),
+                )
+            user.coins -= USERNAME_CHANGE_COST
+            db.add(Transaction(user_id=user.id, amount=-USERNAME_CHANGE_COST, type="USERNAME_CHANGE"))
+
+        user.first_name = new_name
+        user.last_username_change = now
+        db.commit()
+
+        return {
+            "status": "success",
+            "message": "نام با موفقیت تغییر کرد." if free else f"نام تغییر کرد ({USERNAME_CHANGE_COST} سکه کسر شد).",
+            **_serialize_user(user),
+        }
+
+
+# ---------------------------------------------------------
+# REST API - آواتار (آیکون از سطح ۳، عکس پروفایل تلگرام از سطح ۷)
+# ---------------------------------------------------------
+class AvatarIconPayload(BaseModel):
+    icon: str
+
+
+@app.post("/api/user/avatar/icon")
+async def set_avatar_icon(
+    payload: AvatarIconPayload,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    async with _get_user_lock(user.id):
+        db.refresh(user)
+
+        if payload.icon == "default":
+            user.avatar_skin = "default"
+            db.commit()
+            return {"status": "success", **_serialize_user(user)}
+
+        if payload.icon not in AVAILABLE_AVATAR_ICONS:
+            raise HTTPException(status_code=400, detail="آیکون نامعتبر است.")
+        if (user.level or 1) < AVATAR_ICON_LEVEL_REQUIRED:
+            raise HTTPException(
+                status_code=403,
+                detail=f"این قابلیت از سطح {AVATAR_ICON_LEVEL_REQUIRED} باز می‌شود.",
+            )
+        if user.coins < AVATAR_ICON_COST:
+            raise HTTPException(status_code=400, detail="سکه‌ی کافی ندارید.")
+
+        user.coins -= AVATAR_ICON_COST
+        user.avatar_skin = payload.icon
+        db.add(Transaction(user_id=user.id, amount=-AVATAR_ICON_COST, type="AVATAR_CHANGE"))
+        db.commit()
+        return {"status": "success", **_serialize_user(user)}
+
+
+class AvatarPhotoPayload(BaseModel):
+    photo_url: str
+
+
+@app.post("/api/user/avatar/photo")
+async def set_avatar_photo(
+    payload: AvatarPhotoPayload,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    async with _get_user_lock(user.id):
+        db.refresh(user)
+        url = payload.photo_url.strip()
+
+        if not url.startswith("https://"):
+            raise HTTPException(status_code=400, detail="آدرس عکس نامعتبر است.")
+        if (user.level or 1) < AVATAR_PHOTO_LEVEL_REQUIRED:
+            raise HTTPException(
+                status_code=403,
+                detail=f"این قابلیت از سطح {AVATAR_PHOTO_LEVEL_REQUIRED} باز می‌شود.",
+            )
+        if user.coins < AVATAR_PHOTO_COST:
+            raise HTTPException(status_code=400, detail="سکه‌ی کافی ندارید.")
+
+        user.coins -= AVATAR_PHOTO_COST
+        user.avatar_photo_url = url
+        db.add(Transaction(user_id=user.id, amount=-AVATAR_PHOTO_COST, type="AVATAR_PHOTO"))
+        db.commit()
+        return {"status": "success", **_serialize_user(user)}
+
+
+@app.post("/api/user/avatar/photo/clear")
+async def clear_avatar_photo(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    user.avatar_photo_url = None
+    db.commit()
+    return {"status": "success", **_serialize_user(user)}
 
 
 # ---------------------------------------------------------
@@ -334,10 +512,11 @@ async def claim_daily_reward(user: User = Depends(get_current_user), db: Session
         reward_coins = 200
         user.coins += reward_coins
         user.last_daily_claim = now
+        _award_xp(user, XP_DAILY_CLAIM)
         db.add(Transaction(user_id=user.id, amount=reward_coins, type="DAILY_REWARD"))
         db.commit()
 
-        return {"status": "success", "new_coins": user.coins, "reward": reward_coins}
+        return {"status": "success", "new_coins": user.coins, "reward": reward_coins, **_serialize_user(user)}
 
 
 @app.post("/api/economy/spin-wheel")

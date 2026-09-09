@@ -31,6 +31,7 @@ class Room:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     bet_charged: bool = False
     payout_done: bool = False
+    xp_awarded: bool = False
 
     @property
     def max_players(self) -> int:
