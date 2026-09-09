@@ -2,98 +2,327 @@
 <html lang="fa" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>میز اختصاصی پاسور و سکوئنس</title>
-    <!-- اسکریپت ضروری تلگرام مینی اپ -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>میز بازی‌های کارت و بورد</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
         body {
-            font-family: Tahoma, Arial, sans-serif;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             background-color: #0f172a;
             color: #ffffff;
+            height: 100vh;
             display: flex;
             flex-direction: column;
+            overflow: hidden;
+        }
+        /* هدر فوقانی */
+        header {
+            background-color: #1e293b;
+            padding: 12px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #334155;
+        }
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background-color: #38bdf8;
+            display: flex;
             align-items: center;
             justify-content: center;
-            height: 100vh;
-            margin: 0;
-            text-align: center;
+            font-weight: bold;
+            color: #0f172a;
         }
-        .card {
-            background-color: #1e293b;
-            padding: 24px;
-            border-radius: 16px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
-            width: 85%;
-            max-width: 400px;
+        #status-badge {
+            font-size: 12px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            background: #ef4444;
+            color: white;
         }
-        h2 {
+        #status-badge.online {
+            background: #22c55e;
+        }
+
+        /* منوی انتخاب بازی */
+        #game-selection {
+            flex: 1;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            justify-content: center;
+            align-items: center;
+        }
+        .game-card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 16px;
+            width: 100%;
+            max-width: 340px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            transition: transform 0.2s, background-color 0.2s;
+        }
+        .game-card:active {
+            transform: scale(0.98);
+            background-color: #334155;
+        }
+        .game-title {
+            font-size: 18px;
+            font-weight: bold;
             color: #38bdf8;
-            margin-bottom: 12px;
-            font-size: 20px;
         }
-        #status {
-            font-size: 14px;
-            color: #fbbf24;
-            margin-top: 15px;
-            padding: 8px;
+
+        /* زمین بازی */
+        #game-arena {
+            display: none;
+            flex: 1;
+            flex-direction: column;
+            background: #064e3b; /* سبز نمدی ميز بازی */
+            position: relative;
+        }
+        .table-center {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+        }
+        .played-cards {
+            display: flex;
+            gap: 10px;
+            min-height: 100px;
+            align-items: center;
+        }
+        /* ظاهر کارت‌ها */
+        .card {
+            width: 65px;
+            height: 95px;
+            background: white;
+            color: black;
             border-radius: 8px;
-            background: rgba(251, 191, 36, 0.1);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 6px;
+            font-weight: bold;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            cursor: pointer;
         }
-        .online {
-            color: #4ade80 !important;
-            background: rgba(74, 222, 128, 0.1) !important;
+        .card.red { color: #dc2626; }
+        .card.black { color: #000000; }
+
+        /* دست بازیکن */
+        .player-hand {
+            height: 120px;
+            background: rgba(15, 23, 42, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: -10px;
+            padding: 10px;
+            overflow-x: auto;
+        }
+        .player-hand .card {
+            margin-left: -15px;
+            transition: transform 0.2s;
+        }
+        .player-hand .card:hover, .player-hand .card:active {
+            transform: translateY(-15px);
+        }
+
+        .btn-back {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.5);
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
         }
     </style>
 </head>
 <body>
 
-    <div class="card">
-        <h2>میز اختصاصی پاسور و سکوئنس</h2>
-        <div id="status">در حال اتصال به شبکه بازی...</div>
+    <header>
+        <div class="user-info">
+            <div class="avatar" id="user-avatar">U</div>
+            <div>
+                <div id="user-name" style="font-weight: bold; font-size: 14px;">بازیکن</div>
+                <div id="room-info" style="font-size: 11px; color: #94a3b8;">روم: room1</div>
+            </div>
+        </div>
+        <div id="status-badge">در حال اتصال...</div>
+    </header>
+
+    <!-- صفحه ۱: انتخاب بازی -->
+    <div id="game-selection">
+        <h2 style="margin-bottom: 10px; color: #f8fafc;">انتخاب بازی</h2>
+        <div class="game-card" onclick="selectGame('pasur')">
+            <div>
+                <div class="game-title">پاسور (چهاربرگ)</div>
+                <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">۲ یا ۴ نفره آنلاین</div>
+            </div>
+            <div>♠️♥️</div>
+        </div>
+        <div class="game-card" onclick="selectGame('sequence')">
+            <div>
+                <div class="game-title">سکوئنس (Sequence)</div>
+                <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">با قابلیت جوکر یک‌چشم و دوچشم</div>
+            </div>
+            <div>🟩🟦</div>
+        </div>
+        <div class="game-card" onclick="selectGame('hokm')">
+            <div>
+                <div class="game-title">حکم آنلاین</div>
+                <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">کلاسیک ۴ نفره</div>
+            </div>
+            <div>👑</div>
+        </div>
+    </div>
+
+    <!-- صفحه ۲: میز بازی -->
+    <div id="game-arena">
+        <button class="btn-back" onclick="exitGame()">خروج از میز</button>
+        
+        <div class="table-center">
+            <div style="color: rgba(255,255,255,0.7); font-size: 14px;" id="current-game-title">میز بازی</div>
+            <div class="played-cards" id="table-cards">
+                <!-- کارت‌های زمین اینجا اضافه می‌شوند -->
+            </div>
+        </div>
+
+        <!-- دست کارت‌های بازیکن -->
+        <div class="player-hand" id="player-hand">
+            <!-- کارت‌های دست کاربر -->
+        </div>
     </div>
 
     <script>
-        // ۱. مقداردهی اولیه‌ی تلگرام
         const tg = window.Telegram?.WebApp;
         if (tg) {
             tg.ready();
             tg.expand();
         }
 
-        // ۲. استخراج مشخصات کاربر یا ساخت شناسه موقت
-        const userId = tg?.initDataUnsafe?.user?.id || "user_" + Math.floor(Math.random() * 10000);
+        // اطلاعات کاربر
+        const user = tg?.initDataUnsafe?.user;
+        const userId = user?.id ? String(user.id) : "user_" + Math.floor(Math.random() * 1000);
+        const userName = user?.first_name || "بازیکن مهمان";
         const roomId = "room1";
 
-        // ۳. ساخت آدرس امن وب‌سوکت (تغییر ws به wss در صورت استفاده از https)
+        document.getElementById("user-name").innerText = userName;
+        document.getElementById("user-avatar").innerText = userName.charAt(0);
+
+        // اتصال WebSocket
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}/ws/game/${roomId}/${userId}`;
-
-        const statusDiv = document.getElementById("status");
-
-        // ۴. ایجاد اتصال WebSocket
         const socket = new WebSocket(wsUrl);
+        const statusBadge = document.getElementById("status-badge");
 
-        socket.onopen = function(e) {
-            statusDiv.innerText = "ارتباط برقرار شد! خوش آمدید.";
-            statusDiv.classList.add("online");
-            console.log("WebSocket connected successfully.");
+        socket.onopen = function() {
+            statusBadge.innerText = "آنلاین";
+            statusBadge.classList.add("online");
+        };
+
+        socket.onclose = function() {
+            statusBadge.innerText = "آفلاین";
+            statusBadge.classList.remove("online");
         };
 
         socket.onmessage = function(event) {
             const data = JSON.parse(event.data);
-            console.log("دریافت داده از سرور:", data);
+            console.log("پیام دریافت شده از سرور:", data);
+            
+            // اکشن بازی بازیکن دیگر
+            if (data.action === "play_card") {
+                renderTableCard(data.card);
+            }
         };
 
-        socket.onerror = function(error) {
-            statusDiv.innerText = "خطا در اتصال به شبکه! در حال تلاش مجدد...";
-            console.error("WebSocket Error:", error);
-        };
+        // کارکرد منو و انتخاب بازی
+        function selectGame(gameType) {
+            document.getElementById("game-selection").style.display = "none";
+            document.getElementById("game-arena").style.display = "flex";
+            
+            const titles = { 'pasur': 'میز پاسور', 'sequence': 'میز سکوئنس', 'hokm': 'میز حکم' };
+            document.getElementById("current-game-title").innerText = titles[gameType];
 
-        socket.onclose = function(event) {
-            statusDiv.innerText = "قطع ارتباط با سرور!";
-            statusDiv.classList.remove("online");
-        };
+            // بارگذاری کارت‌های نمونه در دست بازیکن
+            loadSampleHand();
+        }
+
+        function exitGame() {
+            document.getElementById("game-arena").style.display = "none";
+            document.getElementById("game-selection").style.display = "flex";
+            document.getElementById("table-cards").innerHTML = "";
+        }
+
+        function loadSampleHand() {
+            const handContainer = document.getElementById("player-hand");
+            handContainer.innerHTML = "";
+            
+            const sampleCards = [
+                { suit: '♠', val: 'A', color: 'black' },
+                { suit: '♥️', val: '10', color: 'red' },
+                { suit: '♦️', val: 'J', color: 'red' },
+                { suit: '♣️', val: '7', color: 'black' }
+            ];
+
+            sampleCards.forEach(card => {
+                const cardDiv = document.createElement("div");
+                cardDiv.className = `card ${card.color}`;
+                cardDiv.innerHTML = `<div>${card.val}</div><div style="align-self:center; font-size:20px;">${card.suit}</div><div style="align-self:flex-end;">${card.val}</div>`;
+                
+                cardDiv.onclick = function() {
+                    playCard(card, cardDiv);
+                };
+                
+                handContainer.appendChild(cardDiv);
+            });
+        }
+
+        function playCard(card, element) {
+            // ارسال اکشن به FastAPI از طریق WebSocket
+            if (socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({
+                    action: "play_card",
+                    card: card,
+                    user_id: userId
+                }));
+                element.remove(); // حذف از دست بازیکن
+            } else {
+                alert("ارتباط با سرور برقرار نیست!");
+            }
+        }
+
+        function renderTableCard(card) {
+            const tableContainer = document.getElementById("table-cards");
+            const cardDiv = document.createElement("div");
+            cardDiv.className = `card ${card.color}`;
+            cardDiv.innerHTML = `<div>${card.val}</div><div style="align-self:center; font-size:20px;">${card.suit}</div><div style="align-self:flex-end;">${card.val}</div>`;
+            tableContainer.appendChild(cardDiv);
+        }
     </script>
 </body>
 </html>
