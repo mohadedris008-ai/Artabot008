@@ -269,7 +269,7 @@ class HokmGame:
         # تعیین حاکم برای دست بعدی
         old_hakem = self.hakem_id
         if winning_team != hakem_team:
-            # اگر تیم حاکم ببازد، چرخش حاکم به نفر سمت چپ (پادساعت‌گرد/ساعت‌گرد)
+            # اگر تیم حاکم ببازد، چرخش حاکم به نفر سمت چپ
             self.hakem_id = (self.hakem_id + 1) % 4
 
         return {
@@ -282,3 +282,27 @@ class HokmGame:
             "new_hakem": self.hakem_id,
             "game_over": any(score >= 7 for score in self.team_scores.values())
         }
+
+# ---------------------------------------------------------
+# ۵. بخش تست و اجرای مستقیم فایل
+# ---------------------------------------------------------
+if __name__ == "__main__":
+    # ۱. ایجاد بازی ۴ نفره
+    game = HokmGame(["علی", "رضا", "محمد", "امین"])
+
+    # ۲. تعیین حاکم اولیه
+    hakem_id = game.determine_first_hakem()
+    print(f"حاکم اولیه مشخص شد: {game.players[hakem_id].name} (بازیکن شماره {hakem_id})")
+
+    # ۳. شروع راند جدید و پخش ۵ برگ اول
+    game.start_new_round()
+    print(f"دست ۵ برگی حاکم: {game.players[hakem_id].hand}")
+
+    # ۴. تعیین حکم توسط حاکم
+    game.set_trump("SPADES") # حکم: پیک
+    print(f"حکم تعیین شد: {game.trump_suit.value}")
+
+    # ۵. نمونه بازی کردن اولین کارت توسط حاکم
+    first_card = game.players[hakem_id].hand[0]
+    res = game.play_card(hakem_id, first_card.suit.name, first_card.rank)
+    print("نتیجه بازی کارت:", res)
