@@ -664,6 +664,66 @@
             box-shadow: 0 0 8px rgba(245, 184, 52, 0.6);
         }
 
+        /* Waiting Room (before a room has enough players to start) */
+        .waiting-room {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            padding: 24px;
+            text-align: center;
+        }
+
+        .waiting-spinner {
+            width: 54px;
+            height: 54px;
+            border-radius: 50%;
+            border: 3px solid rgba(212, 175, 55, 0.2);
+            border-top-color: var(--accent-gold-primary);
+            animation: waitingSpin 1s linear infinite;
+        }
+
+        @keyframes waitingSpin {
+            to { transform: rotate(360deg); }
+        }
+
+        .waiting-title {
+            font-size: 15px;
+            font-weight: 800;
+            color: var(--text-gold);
+        }
+
+        .waiting-subtitle {
+            font-size: 12px;
+            color: var(--text-sub);
+        }
+
+        .waiting-seats {
+            display: flex;
+            gap: 10px;
+            margin-top: 4px;
+        }
+
+        .waiting-seat {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            border: 2px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.04);
+        }
+
+        .waiting-seat.filled {
+            border-color: var(--accent-gold-primary);
+            background: var(--gold-gradient);
+            color: #0b0f19;
+            box-shadow: 0 0 12px rgba(223, 167, 50, 0.5);
+        }
+
         /* Hokm Trump Picker Modal */
         #hokm-trump-picker {
             background: rgba(10, 16, 28, 0.94);
@@ -1231,6 +1291,8 @@
         // ---------------------------------------------------------
         // هاب بازی‌ها
         // ---------------------------------------------------------
+        let gamesCatalog = {}; // game_id -> اطلاعات بازی (برای نمایش «X از Y بازیکن» در صف انتظار)
+
         async function loadGamesCatalog() {
             try {
                 const res = await fetch('/api/games/catalog');
@@ -1238,6 +1300,7 @@
                 const grid = document.getElementById('games-grid');
                 grid.innerHTML = "";
                 (data.games || []).forEach(game => {
+                    gamesCatalog[game.id] = game;
                     const el = document.createElement('div');
                     el.className = 'game-card-hub';
                     el.onclick = () => enterGame(game.id, game.title);
@@ -1368,6 +1431,11 @@
             boardContainer.style.display = 'none';
             trumpPicker.style.display = 'none';
 
+            if (!state.is_started) {
+                renderWaitingRoom(state);
+                return;
+            }
+
             const myHand = state.my_hand || [];
 
             if (state.game_type === 'sequence') {
@@ -1408,6 +1476,30 @@
             if (state.is_finished) {
                 document.getElementById('ui-status').innerText = "بازی تمام شد";
             }
+        }
+
+        function renderWaitingRoom(state) {
+            const tableContainer = document.getElementById('table-cards-container');
+            const handContainer = document.getElementById('player-hand-container');
+
+            const joined = (state.players || []).length;
+            const catalogEntry = gamesCatalog[state.game_type];
+            const needed = catalogEntry?.max_players || joined || 1;
+
+            let seatsHtml = '';
+            for (let i = 0; i < needed; i++) {
+                seatsHtml += `<div class="waiting-seat ${i < joined ? 'filled' : ''}">${i < joined ? '♠' : '؟'}</div>`;
+            }
+
+            tableContainer.innerHTML = `
+                <div class="waiting-room">
+                    <div class="waiting-spinner"></div>
+                    <div class="waiting-title">در انتظار بازیکنان دیگر...</div>
+                    <div class="waiting-subtitle">${joined} از ${needed} بازیکن وارد میز شده‌اند</div>
+                    <div class="waiting-seats">${seatsHtml}</div>
+                </div>
+            `;
+            handContainer.innerHTML = '<div style="color:var(--text-sub); font-size:12px;">به محض تکمیل ظرفیت، کارت‌ها پخش می‌شود</div>';
         }
 
         function renderSequenceBoard(state) {
