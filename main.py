@@ -6,7 +6,16 @@ from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
 
-# ۱. ذخیره اتصالات فعال وب‌سوکت
+# اتصال پوشه static (برای جاوااسکریپت و استایل‌ها)
+if os.path.exists("static"):
+    app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# ۱. اندپوینت Health Check برای UptimeRobot و بیدار نگه داشتن سرور
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
+
+# ۲. ذخیره اتصالات فعال وب‌سوکت
 class ConnectionManager:
     def __init__(self):
         self.active_connections: dict[str, list[WebSocket]] = {}
@@ -28,7 +37,7 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-# ۲. اندپوینت وب‌سوکت برای بازی (دقیقاً متطابق با آدرس index.html)
+# ۳. اندپوینت وب‌سوکت برای بازی
 @app.websocket("/ws/game/{room_id}/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str):
     await manager.connect(room_id, websocket)
@@ -37,7 +46,6 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str):
             data_text = await websocket.receive_text()
             data = json.loads(data_text)
             
-            # نمونه پاسخ برای حرکت جوکر یا بازی
             response = {
                 "status": "ok",
                 "player": user_id,
@@ -50,17 +58,19 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str):
     except WebSocketDisconnect:
         manager.disconnect(room_id, websocket)
 
-# ۳. سرو کردن فایل index.html برای تلگرام مینی اپ
+# ۴. سرو کردن فایل index.html (بررسی در هر دو مسیر ریشه و پوشه static)
 @app.get("/", response_class=HTMLResponse)
 async def get_game_page():
-    if os.path.exists("index.html"):
+    if os.path.exists("static/index.html"):
+        with open("static/index.html", "r", encoding="utf-8") as f:
+            return f.read()
+    elif os.path.exists("index.html"):
         with open("index.html", "r", encoding="utf-8") as f:
             return f.read()
     return "<h1>فایل index.html پیدا نشد!</h1>"
 
-# ۴. دریافت آپدیت‌های تلگرام (Webhook)
+# ۵. دریافت آپدیت‌های تلگرام (Webhook)
 @app.post("/webhook")
 async def telegram_webhook(request: Request):
     data = await request.json()
-    # اینجا پردازش پیام‌های معمولی ربات انجام میشه
     return {"status": "ok"}
