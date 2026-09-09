@@ -5,6 +5,7 @@ Includes: Pasur, Sequence, and fully-featured Hokm Game Engine.
 
 import random
 import time
+import uuid
 from enum import Enum
 from typing import Dict, List, Optional, Any, Tuple
 
@@ -63,13 +64,15 @@ GAME_CATALOG = [
 ]
 
 def create_standard_deck() -> List[Dict[str, Any]]:
+    # از uuid برای id استفاده می‌کنیم (نه یک شمارنده‌ی محلی) چون بعضی
+    # بازی‌ها (مثل سکوئنس) دو دسته کارت استاندارد را با هم ترکیب می‌کنند؛
+    # یک شمارنده‌ی از صفر شروع‌شونده در هر فراخوانی باعث تکراری شدن id
+    # بین دو دسته می‌شد و انتخاب کارت با id در دست بازیکن را مبهم می‌کرد.
     deck = []
-    card_id = 0
     for s in SUITS:
         for r in RANKS:
-            card_id += 1
             deck.append({
-                "id": f"{s}_{r}_{card_id}",
+                "id": f"{s}_{r}_{uuid.uuid4().hex[:8]}",
                 "suit": s,
                 "rank": r,
                 "suit_name": SUIT_NAMES[s],
@@ -316,15 +319,72 @@ class SequenceGame(BaseGame):
         self.hands: Dict[str, List[Dict[str, Any]]] = {}
         self.player_teams: Dict[str, int] = {}
 
+    ONE_EYED_JACK_SUITS = ('♠', '♣')   # جوکر یک‌چشم: برداشتن مهره‌ی حریف
+    TWO_EYED_JACK_SUITS = ('♥', '♦')   # جوکر دوچشم: گذاشتن مهره در هر خانه‌ی خالی
+    SEQUENCE_LENGTH = 5
+    SEQUENCES_TO_WIN = 2  # طبق قوانین اصلی، دو نفره/چهارنفره با ۲ توالی می‌برند
+
     def start_game(self) -> bool:
         if len(self.players) < 2: return False
         self.deck = create_standard_deck() + create_standard_deck()
         random.shuffle(self.deck)
+        num_teams = 3 if len(self.players) == 3 else 2
+        self.num_teams = num_teams
+        self.team_sequences: Dict[int, int] = {t: 0 for t in range(num_teams)}
+        self._used_sequence_cells: set = set()
         for i, p in enumerate(self.players):
-            self.player_teams[p] = i % 2
+            self.player_teams[p] = i % num_teams
             self.hands[p] = [self.deck.pop() for _ in range(6)]
         self.is_started = True
         return True
+
+    @staticmethod
+    def _card_key(card: Dict[str, Any]) -> str:
+        return f"{card['rank']}{card['suit']}"
+
+    def _refill_hand(self, user_id: str, used_card: Dict[str, Any]):
+        hand = self.hands[user_id]
+        hand.remove(used_card)
+        if self.deck:
+            hand.append(self.deck.pop())
+
+    def _check_new_sequences(self, team: int) -> int:
+        """بعد از هر حرکت، شمار توالی‌های ۵تایی جدید این تیم را برمی‌گرداند."""
+        marker = f"team_{team}"
+
+        def cell_belongs(r: int, c: int) -> bool:
+            if not (0 <= r < 10 and 0 <= c < 10):
+                return False
+            val = self.board[r][c]
+            return val == marker or val == "W"
+
+        directions = [(0, 1), (1, 0), (1, 1), (1, -1)]
+        new_sequences = 0
+        for dr, dc in directions:
+            for r in range(10):
+                for c in range(10):
+                    cells = [(r + dr * k, c + dc * k) for k in range(self.SEQUENCE_LENGTH)]
+                    if not all(cell_belongs(rr, cc) for rr, cc in cells):
+                        continue
+                    # از شمردن دوباره‌ی همان ۵تایی که قبلاً برای این تیم امتیاز گرفته جلوگیری می‌کنیم
+                    cell_set = tuple(sorted(cells))
+                    sig = (team, dr, dc, cell_set)
+                    if sig in self._used_sequence_cells:
+                        continue
+                    # اجازه نمی‌دهیم دو توالیِ این تیم بیش از یک خانه‌ی مشترک داشته باشند
+                    overlap_ok = True
+                    for existing in self._used_sequence_cells:
+                        if existing[0] != team:
+                            continue
+                        existing_cells = set(existing[3])
+                        if len(existing_cells & set(cells)) > 1:
+                            overlap_ok = False
+                            break
+                    if not overlap_ok:
+                        continue
+                    self._used_sequence_cells.add(sig)
+                    new_sequences += 1
+        return new_sequences
 
     def handle_action(self, user_id: str, action: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         if not self.is_started or self.is_finished:
@@ -332,24 +392,73 @@ class SequenceGame(BaseGame):
         if self.get_current_turn_player() != user_id:
             return {"status": "error", "message": "نوبت شما نیست!"}
 
-        if action == "place_chip":
-            r, c = payload.get("row"), payload.get("col")
-            card_id = payload.get("card_id")
-            hand = self.hands.get(user_id, [])
-            card = next((x for x in hand if x["id"] == card_id), None)
-            if not card: return {"status": "error", "message": "کارت نامعتبر"}
+        if action != "place_chip":
+            return {"status": "error", "message": "اکشن نامعتبر"}
 
-            team = self.player_teams[user_id]
+        r, c = payload.get("row"), payload.get("col")
+        card_id = payload.get("card_id")
+        if not isinstance(r, int) or not isinstance(c, int) or not (0 <= r < 10 and 0 <= c < 10):
+            return {"status": "error", "message": "خانه‌ی نامعتبر"}
+
+        hand = self.hands.get(user_id, [])
+        card = next((x for x in hand if x["id"] == card_id), None)
+        if not card:
+            return {"status": "error", "message": "کارت در دست شما نیست"}
+
+        team = self.player_teams[user_id]
+        cell = self.board[r][c]
+        is_one_eyed_jack = card["rank"] == "J" and card["suit"] in self.ONE_EYED_JACK_SUITS
+        is_two_eyed_jack = card["rank"] == "J" and card["suit"] in self.TWO_EYED_JACK_SUITS
+
+        if is_one_eyed_jack:
+            # برداشتن یک مهره‌ی حریف (نه مهره‌ی خودی و نه گوشه‌ی wild)
+            if cell is None or cell == "W":
+                return {"status": "error", "message": "این خانه مهره‌ای برای برداشتن ندارد"}
+            if cell == f"team_{team}":
+                return {"status": "error", "message": "نمی‌توانید مهره‌ی تیم خودتان را بردارید"}
+            self.board[r][c] = None
+        else:
+            if cell is not None:
+                return {"status": "error", "message": "این خانه قبلاً پر شده است"}
+            if not is_two_eyed_jack:
+                board_key = SEQUENCE_LAYOUT[r][c]
+                if board_key == "W" or board_key != self._card_key(card):
+                    return {"status": "error", "message": "این کارت با این خانه مطابقت ندارد"}
             self.board[r][c] = f"team_{team}"
-            hand.remove(card)
-            if self.deck: hand.append(self.deck.pop())
+
+        self._refill_hand(user_id, card)
+
+        if not is_one_eyed_jack:
+            gained = self._check_new_sequences(team)
+            if gained:
+                self.team_sequences[team] = self.team_sequences.get(team, 0) + gained
+                if self.team_sequences[team] >= self.SEQUENCES_TO_WIN:
+                    self.is_finished = True
+                    self.winner = user_id
+                    for p in self.players:
+                        if self.player_teams[p] == team:
+                            self.player_info[p]["score"] = self.team_sequences[team]
+
+        if not self.is_finished:
             self.advance_turn()
-            return {"status": "ok", "board": self.board, "next_turn": self.get_current_turn_player()}
-        return {"status": "error", "message": "اکشن نامعتبر"}
+
+        return {
+            "status": "ok",
+            "board": self.board,
+            "team_sequences": self.team_sequences,
+            "next_turn": self.get_current_turn_player(),
+            "is_finished": self.is_finished,
+            "winner": self.winner,
+        }
 
     def get_player_view(self, user_id: str) -> Dict[str, Any]:
         data = super().get_player_view(user_id)
-        data.update({"board": self.board, "my_team": self.player_teams.get(user_id, 0), "my_hand": self.hands.get(user_id, [])})
+        data.update({
+            "board": self.board,
+            "my_team": self.player_teams.get(user_id, 0),
+            "my_hand": self.hands.get(user_id, []),
+            "team_sequences": getattr(self, "team_sequences", {}),
+        })
         return data
 
 # ==================== ۳. حکم کامل (ترکیب کد اول درون ساختار استاندارد) ====================

@@ -6,17 +6,27 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Header
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Header, Query
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from database import get_db, init_db, User, Transaction
-from telegram_auth import verify_telegram_init_data, create_session_token, verify_session_token
+from database import get_db, init_db, User, Transaction, SessionLocal
+from telegram_auth import verify_telegram_init_data, create_session_token, verify_session_token, SESSION_SECRET
 from game_manager import ws_manager
+from game_logic import GAME_CATALOG
 
 app = FastAPI(title="Telegram Game Hub Platform")
+
+if SESSION_SECRET == "change-me-in-production":
+    print(
+        "\n"
+        "!!! هشدار امنیتی: متغیر محیطی SESSION_SECRET تنظیم نشده و از مقدار\n"
+        "!!! پیش‌فرض ناامن استفاده می‌شود. در محیط production حتماً یک مقدار\n"
+        "!!! تصادفی و طولانی برای SESSION_SECRET ست کنید، وگرنه توکن‌های\n"
+        "!!! نشست کاربران قابل جعل هستند.\n"
+    )
 
 # قفل‌های per-user برای جلوگیری از race condition روی سکه (تک-پردازه‌ای؛
 # برای چند-instance باید با یک قفل توزیع‌شده مثل Redis جایگزین شود)
@@ -82,49 +92,162 @@ def require_admin(user: User = Depends(get_current_user)) -> User:
 
 
 # ---------------------------------------------------------
-# وب‌سوکت اصلی بازی‌ها
+# اقتصاد بازی: کسر شرط هنگام شروع و پرداخت جایزه هنگام پایان
+# (این بخش قبلاً هیچ‌جا صدا زده نمی‌شد و min_bet در GAME_CATALOG
+#  عملاً بلااستفاده بود.)
 # ---------------------------------------------------------
-@app.websocket("/ws/game/{room_id}/{user_id}")
-async def game_websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str):
-    await ws_manager.connect(room_id, user_id, websocket)
+def _charge_bets(db: Session, room) -> Optional[str]:
+    """شرط هر بازیکن را کسر می‌کند. اگر کسی سکه‌ی کافی نداشت، بدون کسر از
+    کسی، پیام خطا برمی‌گرداند (بازی این دور شروع نمی‌شود ولی اتاق باز می‌ماند)."""
+    catalog_entry = next((g for g in GAME_CATALOG if g["id"] == room.game_type), None)
+    min_bet = catalog_entry.get("min_bet", 0) if catalog_entry else 0
+    if min_bet <= 0:
+        room.bet_charged = True
+        return None
+
+    user_ids = [int(uid) for uid in room.engine.players]
+    users = db.query(User).filter(User.id.in_(user_ids)).all()
+    users_by_id = {u.id: u for u in users}
+
+    for uid in user_ids:
+        u = users_by_id.get(uid)
+        if not u or u.coins < min_bet:
+            return f"سکه‌ی کافی برای شرط‌بندی این بازی ({min_bet}) وجود ندارد."
+
+    for uid in user_ids:
+        u = users_by_id[uid]
+        u.coins -= min_bet
+        db.add(Transaction(user_id=uid, amount=-min_bet, type="GAME_BET"))
+    db.commit()
+    room.bet_charged = True
+    return None
+
+
+def _payout_winner(db: Session, room):
+    if room.payout_done:
+        return
+    room.payout_done = True
+
+    catalog_entry = next((g for g in GAME_CATALOG if g["id"] == room.game_type), None)
+    min_bet = catalog_entry.get("min_bet", 0) if catalog_entry else 0
+    winner_id = room.engine.winner
+    if not winner_id or not room.bet_charged or min_bet <= 0:
+        return
+
+    pot = min_bet * len(room.engine.players)
+    try:
+        winner_uid = int(winner_id)
+    except (TypeError, ValueError):
+        return
+
+    winner = db.query(User).filter(User.id == winner_uid).first()
+    if winner:
+        winner.coins += pot
+        db.add(Transaction(user_id=winner_uid, amount=pot, type="GAME_WIN"))
+        db.commit()
+
+
+# ---------------------------------------------------------
+# وب‌سوکت اصلی بازی‌ها
+# مسیر بر اساس نوع بازی است (نه یک room_id ثابت که کلاینت انتخاب کند)؛
+# سرور خودش با matchmaking ساده یک اتاق مناسب پیدا/می‌سازد. احراز هویت
+# با توکن نشست (همان Bearer token که از /api/user/sync گرفته شده) انجام
+# می‌شود تا کسی نتواند جای کاربر دیگری وصل شود.
+# ---------------------------------------------------------
+@app.websocket("/ws/game/{game_type}/{user_id}")
+async def game_websocket_endpoint(
+    websocket: WebSocket,
+    game_type: str,
+    user_id: str,
+    token: str = Query(...),
+):
+    verified_user_id = verify_session_token(token)
+    if verified_user_id is None or str(verified_user_id) != str(user_id):
+        await websocket.close(code=4401)
+        return
+
+    valid_game_ids = {g["id"] for g in GAME_CATALOG if g.get("active")}
+    if game_type not in valid_game_ids:
+        await websocket.close(code=4404)
+        return
+
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == verified_user_id).first()
+        if not user or user.is_banned:
+            await websocket.close(code=4403)
+            return
+        username = user.first_name
+    finally:
+        db.close()
+
+    room, just_started = await ws_manager.join(game_type, user_id, username, websocket)
+    if room is None:
+        await websocket.close(code=4409)  # اتاق پر است
+        return
+
+    if just_started:
+        db = SessionLocal()
+        try:
+            error = _charge_bets(db, room)
+        finally:
+            db.close()
+        if error:
+            await ws_manager.broadcast_raw(room, {"type": "ERROR", "message": error})
+
+    await ws_manager.broadcast_state(room)
+
     try:
         while True:
             raw_data = await websocket.receive_text()
-            data = json.loads(raw_data)
-            action = data.get("action")
-            state = ws_manager.get_state(room_id)
-            if state is None:
+            try:
+                data = json.loads(raw_data)
+            except (ValueError, TypeError):
                 continue
+            action = data.get("action")
+            payload = data.get("payload") or {}
 
-            if action == "PLAY_CARD":
-                card = data.get("card")
-                state["table_cards"].append({"played_by": user_id, "card": card})
-                await ws_manager.broadcast(room_id, {
-                    "type": "CARD_PLAYED",
-                    "user_id": user_id,
-                    "card": card,
-                    "table_cards": state["table_cards"],
-                })
-
-            elif action == "SEND_EMOJI":
-                emoji = data.get("emoji")
-                await ws_manager.broadcast(room_id, {
+            if action == "send_emoji":
+                await ws_manager.broadcast_raw(room, {
                     "type": "LIVE_EMOJI",
                     "from_user": user_id,
-                    "emoji": emoji,
+                    "emoji": str(payload.get("emoji", "🔥"))[:8],
                 })
+                continue
 
-            elif action == "ROLL_DICE":
+            if action == "roll_dice":
                 dice_val = random.randint(1, 6)
-                await ws_manager.broadcast(room_id, {
+                await ws_manager.broadcast_raw(room, {
                     "type": "DICE_ROLLED",
                     "user_id": user_id,
                     "value": dice_val,
                 })
+                continue
+
+            # هر اکشن دیگری (play_card / declare_trump / place_chip / ...)
+            # مستقیم به موتور سمت سرور بازی همان room ارسال می‌شود.
+            result = await ws_manager.handle_action(room, user_id, action, payload)
+            if result and result.get("status") == "error":
+                await ws_manager.send_personal(room, user_id, {"type": "ACTION_ERROR", "message": result["message"]})
+            if result and result.get("is_finished"):
+                db = SessionLocal()
+                try:
+                    _payout_winner(db, room)
+                finally:
+                    db.close()
+                await ws_manager.broadcast_raw(room, {"type": "GAME_OVER", "winner": room.engine.winner})
 
     except WebSocketDisconnect:
-        ws_manager.disconnect(room_id, user_id)
-        await ws_manager.broadcast(room_id, {"type": "PLAYER_LEFT", "user_id": user_id})
+        ws_manager.disconnect(room, user_id)
+        await ws_manager.broadcast_raw(room, {"type": "PLAYER_LEFT", "user_id": user_id})
+
+
+# ---------------------------------------------------------
+# فهرست بازی‌های فعال (تا فرانت‌اند لیست هاب را هاردکد نکند)
+# ---------------------------------------------------------
+@app.get("/api/games/catalog")
+async def get_games_catalog():
+    return {"games": [g for g in GAME_CATALOG if g.get("active")]}
 
 
 # ---------------------------------------------------------
@@ -169,6 +292,19 @@ async def sync_user(payload: AuthPayload, db: Session = Depends(get_db)):
 
     return {
         "token": token,
+        "id": user.id,
+        "first_name": user.first_name,
+        "coins": user.coins,
+        "gems": user.gems,
+        "is_admin": user.is_admin,
+        "card_back_skin": user.card_back_skin,
+        "avatar_skin": user.avatar_skin,
+    }
+
+
+@app.get("/api/user/me")
+async def get_me(user: User = Depends(get_current_user)):
+    return {
         "id": user.id,
         "first_name": user.first_name,
         "coins": user.coins,
@@ -242,14 +378,13 @@ async def spin_wheel(user: User = Depends(get_current_user), db: Session = Depen
 @app.get("/api/admin/stats")
 async def get_admin_stats(admin: User = Depends(require_admin), db: Session = Depends(get_db)):
     total_users = db.query(User).count()
-    active_rooms_count = len(ws_manager.active_rooms)
     sum_coins = sum(c[0] for c in db.query(User).with_entities(User.coins).all())
 
     return {
         "total_users": total_users,
-        "active_rooms": active_rooms_count,
+        "active_rooms": ws_manager.active_rooms_count,
         "total_coins": sum_coins,
-        "online_players_count": sum(len(room) for room in ws_manager.active_rooms.values()),
+        "online_players_count": ws_manager.online_players_count,
     }
 
 
