@@ -77,20 +77,26 @@ def _run_light_migrations():
         return  # جدول تازه با create_all ساخته میشه و از اول ستون‌ها رو داره
 
     existing_cols = {c["name"] for c in inspector.get_columns("users")}
+    # TIMESTAMP (نه DATETIME) چون DATETIME یک نوع معتبر در PostgreSQL نیست؛
+    # SQLite هر اسم نوعی رو قبول می‌کنه ولی Postgres سخت‌گیره.
     new_columns = {
         "avatar_photo_url": "VARCHAR",
         "xp": "INTEGER DEFAULT 0",
         "level": "INTEGER DEFAULT 1",
-        "last_username_change": "DATETIME",
+        "last_username_change": "TIMESTAMP",
     }
-    with engine.begin() as conn:
-        for col_name, col_type in new_columns.items():
-            if col_name not in existing_cols:
-                try:
-                    conn.execute(text(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}"))
-                    logger.info(f"migration: ستون '{col_name}' به جدول users اضافه شد")
-                except Exception as e:
-                    logger.warning(f"migration ستون '{col_name}' ناموفق بود: {e}")
+    for col_name, col_type in new_columns.items():
+        if col_name in existing_cols:
+            continue
+        # هر ستون توی تراکنش/اتصال جدای خودش اضافه می‌شه؛ چون توی
+        # PostgreSQL (برخلاف SQLite) یک ALTER ناموفق کل تراکنش رو
+        # abort می‌کنه و دستورهای بعدی همون تراکنش هم شکست می‌خورن.
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}"))
+            logger.info(f"migration: ستون '{col_name}' به جدول users اضافه شد")
+        except Exception as e:
+            logger.warning(f"migration ستون '{col_name}' ناموفق بود: {e}")
 
 
 def init_db():
