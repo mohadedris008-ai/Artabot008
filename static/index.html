@@ -438,6 +438,29 @@
             transition: all 0.2s;
         }
 
+        .btn-help {
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            background: rgba(230, 183, 71, 0.15);
+            border: 1px solid rgba(230, 183, 71, 0.5);
+            color: var(--accent-gold-primary);
+            font-size: 13px;
+            font-weight: 800;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            flex-shrink: 0;
+        }
+
+        .btn-help:active {
+            background: rgba(230, 183, 71, 0.35);
+            transform: scale(0.9);
+        }
+
         .btn-exit:active {
             background: rgba(244, 63, 94, 0.35);
             transform: scale(0.95);
@@ -827,6 +850,132 @@
             box-shadow: 0 0 8px rgba(223, 167, 50, 0.6);
         }
 
+        /* ---------------------------------------------------------
+           راهنمای بازی (تور آموزشی بار اول + دکمه‌ی «؟» دائمی)
+           --------------------------------------------------------- */
+        .help-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(4, 7, 13, 0.86);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            z-index: 500;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            animation: helpFadeIn 0.25s ease;
+        }
+
+        @keyframes helpFadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .help-card {
+            width: 100%;
+            max-width: 360px;
+            background: linear-gradient(180deg, #101a2c 0%, #0a0f1a 100%);
+            border: 1px solid rgba(212, 175, 55, 0.35);
+            border-radius: var(--radius-lg);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.03) inset;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            max-height: 84vh;
+        }
+
+        .help-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 18px;
+            border-bottom: 1px solid rgba(212, 175, 55, 0.2);
+            background: rgba(230, 183, 71, 0.06);
+        }
+
+        #help-title {
+            font-weight: 800;
+            font-size: 15px;
+            color: var(--text-gold);
+        }
+
+        .help-skip-btn {
+            background: none;
+            border: none;
+            color: var(--text-sub);
+            font-size: 11.5px;
+            font-weight: 600;
+            cursor: pointer;
+            padding: 4px 6px;
+        }
+
+        .help-body {
+            padding: 20px 18px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            gap: 12px;
+            min-height: 220px;
+        }
+
+        .help-slide-icon {
+            font-size: 44px;
+            line-height: 1;
+            filter: drop-shadow(0 0 12px rgba(230, 183, 71, 0.4));
+        }
+
+        .help-slide-title {
+            font-size: 15.5px;
+            font-weight: 800;
+            color: var(--text-gold);
+        }
+
+        .help-slide-text {
+            font-size: 12.5px;
+            line-height: 1.9;
+            color: #cbd5e1;
+        }
+
+        .help-slide-text b {
+            color: var(--accent-gold-primary);
+        }
+
+        .help-footer {
+            padding: 14px 18px 18px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            border-top: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .help-dots {
+            display: flex;
+            gap: 6px;
+        }
+
+        .help-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.18);
+            transition: all 0.25s ease;
+        }
+
+        .help-dot.active {
+            background: var(--accent-gold-primary);
+            width: 20px;
+            border-radius: 4px;
+            box-shadow: 0 0 8px rgba(223, 167, 50, 0.6);
+        }
+
+        .help-next-btn {
+            max-width: 100%;
+        }
+
         /* Hokm Trump Picker Modal */
         #hokm-trump-picker {
             background: rgba(10, 16, 28, 0.94);
@@ -879,17 +1028,68 @@
             height: 240px;
             border-radius: 50%;
             border: 8px solid #caa038;
-            background: conic-gradient(
-                #dc2626 0 60deg, 
-                #2563eb 60deg 120deg, 
-                #059669 120deg 180deg, 
-                #d97706 180deg 240deg, 
-                #7c3aed 240deg 300deg, 
-                #db2777 300deg 360deg
-            );
             transition: transform 3.2s cubic-bezier(0.12, 0.98, 0.22, 1);
             box-shadow: 0 0 35px rgba(223, 167, 50, 0.5), inset 0 0 25px rgba(0, 0, 0, 0.6);
             position: relative;
+            overflow: hidden;
+        }
+
+        .wheel svg {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .wheel-seg-label {
+            font-size: 12px;
+            font-weight: 800;
+            fill: #ffffff;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+        }
+
+        .wheel-seg-pct {
+            font-size: 7.5px;
+            font-weight: 700;
+            fill: rgba(255,255,255,0.85);
+        }
+
+        .wheel-odds-hint {
+            font-size: 10.5px;
+            color: var(--text-sub);
+            text-align: center;
+            max-width: 260px;
+            line-height: 1.7;
+        }
+
+        .wheel-legend {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 6px 10px;
+            max-width: 300px;
+        }
+
+        .wheel-legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 10.5px;
+            color: #cbd5e1;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 20px;
+            padding: 3px 9px;
+        }
+
+        .wheel-legend-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .wheel-legend-item b {
+            color: var(--accent-gold-primary);
         }
 
         .wheel-center-pin {
@@ -1014,18 +1214,42 @@
             align-items: center;
             gap: 3px;
             color: var(--text-dim);
-            font-size: 11px;
+            font-size: 9.5px;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
             position: relative;
-            padding: 4px 16px;
+            padding: 4px 8px;
             border-radius: 12px;
+            flex: 1;
+            min-width: 0;
+            white-space: nowrap;
         }
 
         .nav-item .icon {
-            font-size: 21px;
+            font-size: 19px;
             transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .nav-item.nav-item-main {
+            transform: translateY(-6px);
+        }
+
+        .nav-item.nav-item-main .icon {
+            font-size: 24px;
+            width: 46px;
+            height: 46px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            background: var(--gold-gradient);
+            box-shadow: 0 6px 18px rgba(223, 167, 50, 0.5), inset 0 1px 2px rgba(255,255,255,0.5);
+            color: #0b0e14;
+        }
+
+        .nav-item.nav-item-main.active .icon {
+            transform: scale(1.1);
         }
 
         .nav-item.active {
@@ -1200,6 +1424,45 @@
             font-size: 11px;
         }
 
+        .soon-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .soon-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px;
+            background: var(--bg-card);
+            border: 1px solid var(--bg-card-border);
+            border-radius: var(--radius-md);
+        }
+
+        .soon-icon {
+            font-size: 24px;
+            width: 38px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        .soon-text {
+            flex: 1;
+            font-size: 12.5px;
+        }
+
+        .soon-title {
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 3px;
+        }
+
+        .soon-sub {
+            color: var(--text-sub);
+            font-size: 11px;
+        }
+
         .vip-section-title {
             font-size: 13px;
             font-weight: 800;
@@ -1305,8 +1568,12 @@
                     <div class="wheel-center-pin">⭐</div>
                 </div>
 
+                <div class="wheel-odds-hint">درصدِ روی هر خانه، شانس واقعی همون جایزه‌ست — چیزی مخفی نیست.</div>
+
+                <div class="wheel-legend" id="wheel-legend"></div>
+
                 <div style="display: flex; flex-direction: column; gap: 12px; width: 100%; align-items: center; margin-top: 6px;">
-                    <button class="btn-gold" onclick="spinWheel()">
+                    <button class="btn-gold" id="spin-wheel-btn" onclick="spinWheel()">
                         <span>🎡</span>
                         <span>چرخش گردونه (۱۰۰ سکه)</span>
                     </button>
@@ -1372,6 +1639,26 @@
                 </div>
             </div>
 
+            <div class="vip-section-title" style="margin-top:18px;">✏️ ویرایش نام و آواتار</div>
+            <div class="vip-perk-row" style="cursor:pointer;" onclick="switchTab('tab-settings', null); document.querySelectorAll('.nav-item').forEach(el=>el.classList.remove('active')); document.getElementById('nav-settings-btn').classList.add('active');">
+                <div class="vip-perk-icon">⚙️</div>
+                <div class="vip-perk-text">
+                    <div class="perk-title">تغییر نام و انتخاب آواتار</div>
+                    <div class="perk-sub">از تب «تنظیمات» قابل انجامه</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Settings (تغییر نام + انتخاب آواتار) -->
+        <div id="tab-settings" class="tab-content">
+            <div class="hub-banner">
+                <div>
+                    <div class="banner-title">تنظیمات پروفایل</div>
+                    <div class="banner-subtitle">نام نمایشی و آواتارت رو از اینجا مدیریت کن</div>
+                </div>
+                <div class="banner-icon">⚙️</div>
+            </div>
+
             <div class="vip-section-title">🎨 انتخاب آواتار</div>
             <div class="avatar-icon-grid" id="avatar-icon-grid">
                 <!-- با renderVipTab() پر می‌شود -->
@@ -1391,11 +1678,55 @@
             <div style="font-size: 10.5px; color: var(--text-sub); margin-top: 6px;" id="username-cost-hint"></div>
         </div>
 
+        <!-- Tab: Coming Soon (به‌زودی) -->
+        <div id="tab-soon" class="tab-content">
+            <div class="hub-banner">
+                <div>
+                    <div class="banner-title">به‌زودی...</div>
+                    <div class="banner-subtitle">این‌ها رو داریم آماده می‌کنیم</div>
+                </div>
+                <div class="banner-icon">🚧</div>
+            </div>
+            <div class="soon-list">
+                <div class="soon-item">
+                    <div class="soon-icon">🎮</div>
+                    <div class="soon-text">
+                        <div class="soon-title">بازی با دوستان / رقیب تصادفی / سیستم</div>
+                        <div class="soon-sub">انتخاب حالت بازی قبل از ورود به هر میز</div>
+                    </div>
+                </div>
+                <div class="soon-item">
+                    <div class="soon-icon">🃏</div>
+                    <div class="soon-text">
+                        <div class="soon-title">بازی‌های جدید</div>
+                        <div class="soon-sub">ژاکارو، شلم و چند بازی محبوب دیگر</div>
+                    </div>
+                </div>
+                <div class="soon-item">
+                    <div class="soon-icon">🏆</div>
+                    <div class="soon-text">
+                        <div class="soon-title">تورنمنت‌ها و جدول امتیازات</div>
+                        <div class="soon-sub">رقابت هفتگی با جایزه‌ی ویژه</div>
+                    </div>
+                </div>
+                <div class="soon-item">
+                    <div class="soon-icon">🤝</div>
+                    <div class="soon-text">
+                        <div class="soon-title">دعوت از دوستان</div>
+                        <div class="soon-sub">با هر دعوت موفق، سکه‌ی هدیه بگیر</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Tab 4: Active Game Arena (Royal Felt Table) -->
         <div id="arena-tab" class="tab-content">
             <div class="arena-header">
                 <span id="arena-title">میز بازی</span>
-                <button class="btn-exit" onclick="exitGame()">خروج از میز</button>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <button class="btn-help" onclick="openGameHelp(currentGameType)" title="راهنمای بازی">؟</button>
+                    <button class="btn-exit" onclick="exitGame()">خروج از میز</button>
+                </div>
             </div>
 
             <div class="felt-table" id="felt-table">
@@ -1435,23 +1766,48 @@
 
     <!-- BOTTOM VIP NAV -->
     <nav id="bottom-nav">
-        <div class="nav-item active" onclick="switchTab('tab-hub', this)">
-            <div class="icon">🎮</div>
-            <div>بازی‌ها</div>
-        </div>
         <div class="nav-item" onclick="switchTab('tab-shop', this)">
             <div class="icon">🎡</div>
-            <div>گردونه & فروشگاه</div>
+            <div>گردونه</div>
         </div>
         <div class="nav-item" onclick="switchTab('tab-vip', this); renderVipTab();">
             <div class="icon">👑</div>
             <div>کلوپ اشرافی</div>
+        </div>
+        <div class="nav-item nav-item-main active" onclick="switchTab('tab-hub', this)">
+            <div class="icon">🎮</div>
+            <div>بازی‌ها</div>
+        </div>
+        <div class="nav-item" onclick="switchTab('tab-soon', this)">
+            <div class="icon">🚧</div>
+            <div>به‌زودی</div>
+        </div>
+        <div class="nav-item" id="nav-settings-btn" onclick="switchTab('tab-settings', this); renderVipTab();">
+            <div class="icon">⚙️</div>
+            <div>تنظیمات</div>
         </div>
         <div class="nav-item" id="nav-admin-btn" style="display: none;" onclick="switchTab('tab-admin', this)">
             <div class="icon">🛡</div>
             <div>مدیریت</div>
         </div>
     </nav>
+
+    <!-- Game Help / Tutorial Overlay -->
+    <div id="help-overlay" class="help-overlay" style="display:none;">
+        <div class="help-card">
+            <div class="help-header">
+                <span id="help-title">راهنمای بازی</span>
+                <button class="help-skip-btn" onclick="closeGameHelp()">رد شدن ✕</button>
+            </div>
+            <div class="help-body" id="help-body">
+                <!-- با renderHelpSlide() پر می‌شود -->
+            </div>
+            <div class="help-footer">
+                <div class="help-dots" id="help-dots"></div>
+                <button class="btn-gold help-next-btn" id="help-next-btn" onclick="nextHelpSlide()">بعدی</button>
+            </div>
+        </div>
+    </div>
 
     <script>
         // ---------------------------------------------------------
@@ -1577,6 +1933,7 @@
                 updateUI();
                 loadGamesCatalog();
             }
+            renderWheelSVG();
         }
 
         function renderHeaderAvatar() {
@@ -1843,6 +2200,114 @@
                 '<div style="color:var(--text-sub); font-size:13px; font-weight:600;">در انتظار سایر بازیکنان...</div>';
 
             connectWebSocket(gameType);
+
+            // دفعه‌ی اول ورود به هر بازی، تور آموزشی «بعدی/بعدی...» خودکار باز می‌شود
+            if (!hasSeenGameTutorial(gameType)) {
+                openGameHelp(gameType, true);
+            }
+        }
+
+        // ---------------------------------------------------------
+        // راهنمای بازی: تور آموزشی بار اول (localStorage) + دکمه‌ی «؟» دائمی
+        // ---------------------------------------------------------
+        const GAME_HELP_CONTENT = {
+            pasur: {
+                title: 'راهنمای پاسور (چهاربرگ)',
+                slides: [
+                    { icon: '🃏', title: 'هدف بازی', text: 'هر نوبت یک کارت از دستتان بازی می‌کنید. هدف، <b>جمع کردن</b> کارت‌های روی میز و کسب بیشترین امتیاز در پایان دور است.' },
+                    { icon: '➕', title: 'جمع ۱۱', text: 'اگر مجموع یک یا چند کارت روی میز به‌همراه کارتی که بازی می‌کنید <b>دقیقاً ۱۱</b> شود، همه‌ی آن‌ها را جمع می‌کنید.' },
+                    { icon: '👑', title: 'سرباز و شاه/بی‌بی', text: 'سرباز (J) همه‌ی کارت‌های عددی روی میز را جمع می‌کند. شاه با شاه و بی‌بی با بی‌بی جفت می‌شوند و جمع می‌شوند.' },
+                    { icon: '⭐', title: 'سور', text: 'اگر با بازی یک کارت، میز <b>کاملاً خالی</b> شود، یک «سور» می‌گیرید که در پایان امتیاز اضافه می‌دهد.' },
+                    { icon: '🏆', title: 'امتیازدهی پایانی', text: 'در پایان، ۱۰ خشت، ۲ خاج، آس‌ها، سرباز‌ها و بیشترین تعداد خاج امتیاز ویژه دارند. بیشترین امتیاز برنده است.' },
+                ]
+            },
+            hokm: {
+                title: 'راهنمای حکم کلاسیک',
+                slides: [
+                    { icon: '👑', title: 'حاکم و خال حکم', text: 'یک نفر «حاکم» می‌شود و یکی از ۴ خال را به‌عنوان <b>خال حکم</b> (برگ برنده) تعیین می‌کند.' },
+                    { icon: '🃏', title: 'رعایت خال زمینه', text: 'باید هم‌خالِ کارتی که اول بازی شده را بازی کنید؛ اگر آن خال را نداشتید، هر کارت دیگری (از جمله حکم) مجاز است.' },
+                    { icon: '⚔️', title: 'برنده‌ی هر دست', text: 'در هر دست، بالاترین کارت از خال حکم (اگر بازی شده باشد) یا بالاترین کارت هم‌خال با زمینه، برنده می‌شود.' },
+                    { icon: '🤝', title: 'تیم‌ها', text: 'نفرات روبه‌رو هم‌تیمی هستند (۲ تیم ۲نفره). دست‌های برده‌شده‌ی هر دو نفر تیم با هم جمع می‌شود.' },
+                    { icon: '🏆', title: 'برد دور', text: 'تیمی که زودتر به <b>۷ دست</b> برسد، آن دور را می‌برد.' },
+                ]
+            },
+            sequence: {
+                title: 'راهنمای سکوئنس (Sequence)',
+                slides: [
+                    { icon: '🎲', title: 'هدف بازی', text: 'با بازی کردن کارتی از دستتان، مهره‌ی تیم خود را روی خانه‌ی هم‌شکل با آن کارت در تخته قرار می‌دهید.' },
+                    { icon: '⭐', title: 'خانه‌های وایلد', text: '۴ گوشه‌ی تخته (علامت ★) برای همه‌ی تیم‌ها آزاد محسوب می‌شوند و در تشکیل خط به‌حساب می‌آیند.' },
+                    { icon: '🃏', title: 'جوکر دوچشم (♥ ♦)', text: 'سرباز خشت یا دل را که بازی کنید، می‌توانید مهره‌تان را در <b>هر خانه‌ی خالی</b> دلخواه بگذارید.' },
+                    { icon: '🖐️', title: 'جوکر یک‌چشم (♠ ♣)', text: 'سرباز پیک یا گشنیز را که بازی کنید، می‌توانید یک مهره‌ی <b>حریف</b> را از تخته بردارید (نه مهره‌ی خودتان).' },
+                    { icon: '🏆', title: 'برد بازی', text: 'اولین تیمی که <b>۲ توالی ۵تایی</b> (افقی، عمودی یا مورب) بسازد، برنده‌ی بازی است.' },
+                ]
+            }
+        };
+
+        let _helpCurrentGame = null;
+        let _helpSlideIndex = 0;
+        let _helpIsFirstRun = false;
+
+        function hasSeenGameTutorial(gameType) {
+            try {
+                return localStorage.getItem('tutorial_seen_' + gameType) === '1';
+            } catch (e) {
+                return true; // اگر localStorage در دسترس نبود، مزاحم تجربه‌ی کاربر نشویم
+            }
+        }
+
+        function markGameTutorialSeen(gameType) {
+            try {
+                localStorage.setItem('tutorial_seen_' + gameType, '1');
+            } catch (e) { /* بی‌اهمیت */ }
+        }
+
+        function openGameHelp(gameType, isFirstRun) {
+            const content = GAME_HELP_CONTENT[gameType];
+            if (!content) return;
+            _helpCurrentGame = gameType;
+            _helpSlideIndex = 0;
+            _helpIsFirstRun = !!isFirstRun;
+            document.getElementById('help-title').innerText = content.title;
+            renderHelpSlide();
+            document.getElementById('help-overlay').style.display = 'flex';
+        }
+
+        function closeGameHelp() {
+            if (_helpIsFirstRun && _helpCurrentGame) {
+                markGameTutorialSeen(_helpCurrentGame);
+            }
+            document.getElementById('help-overlay').style.display = 'none';
+        }
+
+        function renderHelpSlide() {
+            const content = GAME_HELP_CONTENT[_helpCurrentGame];
+            if (!content) return;
+            const slide = content.slides[_helpSlideIndex];
+            const isLast = _helpSlideIndex === content.slides.length - 1;
+
+            document.getElementById('help-body').innerHTML = `
+                <div class="help-slide-icon">${slide.icon}</div>
+                <div class="help-slide-title">${slide.title}</div>
+                <div class="help-slide-text">${slide.text}</div>
+            `;
+
+            const dotsHtml = content.slides.map((_, i) =>
+                `<div class="help-dot ${i === _helpSlideIndex ? 'active' : ''}"></div>`
+            ).join('');
+            document.getElementById('help-dots').innerHTML = dotsHtml;
+
+            document.getElementById('help-next-btn').innerText = isLast ? 'متوجه شدم' : 'بعدی';
+        }
+
+        function nextHelpSlide() {
+            const content = GAME_HELP_CONTENT[_helpCurrentGame];
+            if (!content) return;
+            if (_helpSlideIndex < content.slides.length - 1) {
+                _helpSlideIndex++;
+                renderHelpSlide();
+            } else {
+                closeGameHelp();
+            }
         }
 
         function sendAction(action, payload) {
@@ -2075,23 +2540,112 @@
 
         function exitGame() {
             if (socket) socket.close();
-            switchTab('tab-hub', document.querySelector('.nav-item'));
+            switchTab('tab-hub', document.querySelector('.nav-item-main'));
             document.getElementById('table-cards-container').innerHTML = "";
         }
 
         // ---------------------------------------------------------
         // ۵. سیستم اقتصادی (گردونه شانس و پاداش روزانه)
         // ---------------------------------------------------------
+        // ---------------------------------------------------------
+        // گردونه‌ی شانس: درصدها دقیقاً همان وزن‌هایی هستند که سرور
+        // (main.py -> spin_wheel) واقعاً برای انتخاب جایزه استفاده می‌کند؛
+        // اینجا فقط برای نمایش تکرار شده‌اند تا چرخ هم اندازه‌ی هر خانه و
+        // هم برچسب شانس را درست و صادقانه نشان دهد. اگر وزن‌های سمت سرور
+        // تغییر کرد، همین لیست هم باید به‌روز شود.
+        const WHEEL_PRIZES = [
+            { value: 0, weight: 35, label: '🙁', color: '#3f4a5c' },
+            { value: 30, weight: 25, label: '۳۰', color: '#2563eb' },
+            { value: 80, weight: 20, label: '۸۰', color: '#059669' },
+            { value: 150, weight: 12, label: '۱۵۰', color: '#d97706' },
+            { value: 400, weight: 6, label: '۴۰۰', color: '#dc2626' },
+            { value: 1000, weight: 1.5, label: '۱۰۰۰', color: '#7c3aed' },
+            { value: 'skin_gold', weight: 0.5, label: '🏆', color: '#db2777' },
+        ];
+        const WHEEL_TOTAL_WEIGHT = WHEEL_PRIZES.reduce((sum, p) => sum + p.weight, 0);
+
+        function polarToCartesian(cx, cy, r, angleDeg) {
+            const rad = (angleDeg - 90) * Math.PI / 180;
+            return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+        }
+
+        function renderWheelSVG() {
+            const size = 240, cx = size / 2, cy = size / 2, r = size / 2;
+            let angle = 0;
+            let paths = '';
+            let labels = '';
+            let legendHtml = '';
+            const segStarts = []; // برای محاسبه‌ی دقیق چرخش هنگام برنده‌شدن نگه می‌داریم
+            const MIN_SWEEP_FOR_INLINE_LABELS = 22; // خانه‌های باریک‌تر از این، برچسب کامل داخلشان جا نمی‌شود
+
+            WHEEL_PRIZES.forEach((p) => {
+                const sweep = (p.weight / WHEEL_TOTAL_WEIGHT) * 360;
+                const start = angle;
+                const end = angle + sweep;
+                segStarts.push({ start, end, mid: (start + end) / 2 });
+
+                const p1 = polarToCartesian(cx, cy, r, start);
+                const p2 = polarToCartesian(cx, cy, r, end);
+                const largeArc = sweep > 180 ? 1 : 0;
+                paths += `<path d="M${cx},${cy} L${p1.x.toFixed(2)},${p1.y.toFixed(2)} A${r},${r} 0 ${largeArc} 1 ${p2.x.toFixed(2)},${p2.y.toFixed(2)} Z" fill="${p.color}" stroke="#0b0f19" stroke-width="1.5"/>`;
+
+                const pctText = `${p.weight}%`;
+                if (sweep >= MIN_SWEEP_FOR_INLINE_LABELS) {
+                    // خانه‌ی به‌اندازه‌کافی پهن: هم مقدار جایزه هم درصد داخل خودش نشان داده می‌شود
+                    const labelPos = polarToCartesian(cx, cy, r * 0.68, (start + end) / 2);
+                    const pctPos = polarToCartesian(cx, cy, r * 0.42, (start + end) / 2);
+                    labels += `<text x="${labelPos.x.toFixed(2)}" y="${labelPos.y.toFixed(2)}" class="wheel-seg-label" text-anchor="middle" dominant-baseline="middle">${p.label}</text>`;
+                    labels += `<text x="${pctPos.x.toFixed(2)}" y="${pctPos.y.toFixed(2)}" class="wheel-seg-pct" text-anchor="middle" dominant-baseline="middle">${pctText}</text>`;
+                } else {
+                    // خانه‌ی خیلی باریک (جوایز کمیاب): فقط یک برچسب کوچک مقدار جایزه
+                    // نزدیک لبه‌ی بیرونی، و درصد دقیقش در لیست زیر چرخ (legend) نشان داده می‌شود
+                    const labelPos = polarToCartesian(cx, cy, r * 0.82, (start + end) / 2);
+                    labels += `<text x="${labelPos.x.toFixed(2)}" y="${labelPos.y.toFixed(2)}" class="wheel-seg-label" style="font-size:9px;" text-anchor="middle" dominant-baseline="middle">${p.label}</text>`;
+                }
+
+                legendHtml += `<div class="wheel-legend-item"><span class="wheel-legend-dot" style="background:${p.color}"></span>${p.label} — <b>${pctText}</b></div>`;
+
+                angle = end;
+            });
+
+            window._wheelSegStarts = segStarts; // برای استفاده در spinWheel()
+
+            const svg = `<svg viewBox="0 0 ${size} ${size}">${paths}${labels}</svg>`;
+            const wheelEl = document.getElementById('wheel-element');
+            if (wheelEl) wheelEl.innerHTML = svg;
+            const legendEl = document.getElementById('wheel-legend');
+            if (legendEl) legendEl.innerHTML = legendHtml;
+        }
+
+        let _wheelCurrentRotation = 0;
+
         async function spinWheel() {
+            const spinBtn = document.getElementById('spin-wheel-btn');
+            if (spinBtn) spinBtn.disabled = true;
             try {
                 const res = await authFetch('/api/economy/spin-wheel', { method: 'POST' });
                 const data = await res.json();
-                
+
                 if (res.ok) {
                     const wheel = document.getElementById('wheel-element');
-                    const randomDegree = 1800 + Math.floor(Math.random() * 360);
-                    wheel.style.transform = `rotate(${randomDegree}deg)`;
-                    
+                    const segs = window._wheelSegStarts || [];
+                    const wonIndex = WHEEL_PRIZES.findIndex(p => String(p.value) === String(data.prize));
+                    const seg = segs[wonIndex >= 0 ? wonIndex : 0];
+
+                    // نشانگر (pointer) بالای چرخ و ثابت است؛ چرخ باید طوری بچرخد
+                    // که وسط همان خانه‌ی برنده‌ی واقعی (از پاسخ سرور) زیر نشانگر
+                    // بیاید — نه یک زاویه‌ی کاملاً تصادفی مثل قبل.
+                    const targetMid = seg ? seg.mid : 0;
+                    const extraSpins = 5 * 360;
+                    // کمی نویز تصادفیِ کوچک داخل همان خانه (نه کل چرخ) تا چرخش
+                    // هر بار دقیقاً یک نقطه‌ی ثابت نباشد، ولی همچنان داخل خانه‌ی درست بماند.
+                    const segWidth = seg ? (seg.end - seg.start) : 60;
+                    const jitter = (Math.random() - 0.5) * Math.min(segWidth * 0.5, 14);
+                    const finalAngle = extraSpins + (360 - targetMid) + jitter;
+
+                    _wheelCurrentRotation += finalAngle;
+                    wheel.style.transform = `rotate(${_wheelCurrentRotation}deg)`;
+
                     setTimeout(() => {
                         alert(data.message);
                         currentUser.coins = data.new_coins;
@@ -2099,12 +2653,15 @@
                         updateUI();
                         pulseBalance();
                         playSound('win');
+                        if (spinBtn) spinBtn.disabled = false;
                     }, 3300);
                 } else {
                     alert(data.detail || "خطا در چرخش گردونه");
+                    if (spinBtn) spinBtn.disabled = false;
                 }
             } catch (e) {
                 alert("ارتباط با سرور برقرار نشد.");
+                if (spinBtn) spinBtn.disabled = false;
             }
         }
 
