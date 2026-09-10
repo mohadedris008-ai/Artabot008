@@ -131,8 +131,22 @@ class BaseGame:
         وقتی نوبتِ بازیکنی است که الان bot_controlled شده، این متد باید یک
         حرکتِ قانونی (action, payload) برای او برگرداند. پیاده‌سازی پیش‌فرض
         هیچ حرکتی ندارد؛ هر زیرکلاس بازی این را با منطق خودش override می‌کند.
+        این متد همان چیزی است که حالت «قانون‌محور» (rule_based) استفاده
+        می‌کند؛ همیشه به‌عنوان fallback نهایی هم نگه داشته می‌شود (اگر حالت
+        API فعال باشد ولی هیچ سرویس خارجی جواب ندهد).
         """
         return None
+
+    def get_legal_actions(self, user_id: str) -> List[Dict[str, Any]]:
+        """
+        فهرستی از حرکت‌های قانونی فعلی به شکل [{"action":..., "payload":...}, ...]
+        برمی‌گرداند — برای حالت هوش مصنوعیِ API لازم است تا سرویس خارجی فقط از
+        بین گزینه‌های واقعاً مجاز انتخاب کند (تا هیچ‌وقت حرکت غیرقانونی سمت
+        سرور enforce نشود). پیاده‌سازی پیش‌فرض خالی است؛ هر بازی این را
+        override می‌کند. اگر override نشود، سیستم به‌طور خودکار روی
+        get_bot_action (rule-based) fallback می‌کند.
+        """
+        return []
 
     def get_player_view(self, user_id: str) -> Dict[str, Any]:
         return {
@@ -327,6 +341,17 @@ class PasurGame(BaseGame):
                 if self._find_sum_combinations(needed, numeric_cards):
                     return "play_card", {"card_id": card["id"]}
         return "play_card", {"card_id": hand[0]["id"]}
+
+    def get_legal_actions(self, user_id: str) -> List[Dict[str, Any]]:
+        # در پاسور هر کارتِ داخل دست، یک حرکتِ قانونی است (نتیجه‌اش فرق
+        # می‌کند ولی همیشه مجاز است)؛ برای هوش مصنوعیِ API فقط لیست کارت‌ها
+        # با اطلاعات خوانا (suit/rank) کافی است.
+        hand = self.hands.get(user_id, [])
+        return [
+            {"action": "play_card", "payload": {"card_id": c["id"]},
+             "description": f"{c['rank']}{c['suit']}"}
+            for c in hand
+        ]
 
 # ==================== ۲. سکوئنس (Sequence) ====================
 SEQUENCE_LAYOUT = [
@@ -532,6 +557,49 @@ class SequenceGame(BaseGame):
                             return "place_chip", {"card_id": card["id"], "row": r, "col": c}
         return None
 
+    def get_legal_actions(self, user_id: str) -> List[Dict[str, Any]]:
+        hand = self.hands.get(user_id, [])
+        team = self.player_teams.get(user_id, 0)
+        actions: List[Dict[str, Any]] = []
+
+        def cell_owner(r, c):
+            return self.board[r][c]
+
+        for card in hand:
+            is_two_eyed = card["rank"] == "J" and card["suit"] in self.TWO_EYED_JACK_SUITS
+            is_one_eyed = card["rank"] == "J" and card["suit"] in self.ONE_EYED_JACK_SUITS
+            if is_one_eyed:
+                for r in range(10):
+                    for c in range(10):
+                        owner = cell_owner(r, c)
+                        if owner is not None and owner != "W" and owner != f"team_{team}":
+                            actions.append({
+                                "action": "place_chip",
+                                "payload": {"card_id": card["id"], "row": r, "col": c},
+                                "description": f"برداشتن مهره‌ی حریف در ({r},{c}) با {card['rank']}{card['suit']}",
+                            })
+                continue
+            if is_two_eyed:
+                for r in range(10):
+                    for c in range(10):
+                        if cell_owner(r, c) is None:
+                            actions.append({
+                                "action": "place_chip",
+                                "payload": {"card_id": card["id"], "row": r, "col": c},
+                                "description": f"جوکر دوچشم در ({r},{c})",
+                            })
+                continue
+            key = self._card_key(card)
+            for r in range(10):
+                for c in range(10):
+                    if SEQUENCE_LAYOUT[r][c] == key and cell_owner(r, c) is None:
+                        actions.append({
+                            "action": "place_chip",
+                            "payload": {"card_id": card["id"], "row": r, "col": c},
+                            "description": f"گذاشتن {card['rank']}{card['suit']} در ({r},{c})",
+                        })
+        return actions
+
 # ==================== ۳. حکم کامل (ترکیب کد اول درون ساختار استاندارد) ====================
 class HokmCard:
     def __init__(self, suit_char: str, rank: int):
@@ -649,7 +717,13 @@ class HokmGame(BaseGame):
             "my_hand": [c.to_dict() for c in self.hands.get(user_id, [])],
             "trick_cards": [{"player": p, "card": c.to_dict()} for p, c in self.current_trick],
             "tricks_won": self.tricks_won,
-            "deal_phase": self.deal_phase
+            "deal_phase": self.deal_phase,
+            # این فیلد قبلاً اصلاً در خروجی نبود؛ یعنی نه کلاینت وب و نه یک
+            # هوش مصنوعیِ API نمی‌توانستند بفهمند باید کدام خال را دنبال
+            # کنند و فقط بعد از یک ACTION_ERROR سرور متوجه می‌شدند. حالا
+            # صریح فرستاده می‌شود تا هم UI بتواند به بازیکن نشان دهد، هم
+            # get_legal_actions/AI بدون نیاز به حدس زدن کار کند.
+            "lead_suit": self.lead_suit,
         })
         return data
 
@@ -667,6 +741,26 @@ class HokmGame(BaseGame):
         else:
             chosen = hand[0]
         return "play_card", {"suit": chosen.suit_char, "rank": chosen.rank}
+
+    def get_legal_actions(self, user_id: str) -> List[Dict[str, Any]]:
+        if self.deal_phase == 0:
+            if user_id == self.hakim:
+                return [
+                    {"action": "declare_trump", "payload": {"suit": s}, "description": f"حکم {s}"}
+                    for s in SUITS
+                ]
+            return []
+        hand = self.hands.get(user_id, [])
+        if self.lead_suit:
+            same_suit = [c for c in hand if c.suit_char == self.lead_suit]
+            playable = same_suit if same_suit else hand
+        else:
+            playable = hand
+        return [
+            {"action": "play_card", "payload": {"suit": c.suit_char, "rank": c.rank},
+             "description": c.to_dict()["display"]}
+            for c in playable
+        ]
 
 class GameEngineFactory:
     REGISTRY = {"pasur": PasurGame, "sequence": SequenceGame, "hokm": HokmGame}

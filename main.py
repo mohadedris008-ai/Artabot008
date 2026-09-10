@@ -4,7 +4,7 @@ import time
 import random
 import asyncio
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Header, Query
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from database import get_db, init_db, User, Transaction, SessionLocal
+from database import get_db, init_db, User, Transaction, SessionLocal, AISettings
 from telegram_auth import verify_telegram_init_data, create_session_token, verify_session_token, SESSION_SECRET
 from game_manager import ws_manager
 from game_logic import GAME_CATALOG
@@ -93,9 +93,30 @@ def _get_user_lock(user_id: int) -> asyncio.Lock:
     return _user_locks[user_id]
 
 
+def _load_ai_settings_into_manager():
+    """تنظیمات هوش مصنوعیِ ذخیره‌شده در دیتابیس (ردیف singleton) را در
+    حافظه‌ی ws_manager بارگذاری می‌کند تا run_bot_turns همیشه آخرین
+    انتخاب مالک (rule_based/api + لیست endpoint ها) را ببیند."""
+    db = SessionLocal()
+    try:
+        row = db.query(AISettings).filter(AISettings.id == 1).first()
+        if row is None:
+            row = AISettings(id=1, mode="rule_based", api_endpoints_json="[]")
+            db.add(row)
+            db.commit()
+        ws_manager.ai_mode = row.mode or "rule_based"
+        try:
+            ws_manager.ai_endpoints = json.loads(row.api_endpoints_json or "[]")
+        except (ValueError, TypeError):
+            ws_manager.ai_endpoints = []
+    finally:
+        db.close()
+
+
 @app.on_event("startup")
 async def on_startup():
     init_db()
+    _load_ai_settings_into_manager()
     if get_bot_token_status() == "missing":
         print(
             "\n"
@@ -169,16 +190,35 @@ def require_admin(user: User = Depends(get_current_user)) -> User:
 # (این بخش قبلاً هیچ‌جا صدا زده نمی‌شد و min_bet در GAME_CATALOG
 #  عملاً بلااستفاده بود.)
 # ---------------------------------------------------------
+def _is_ai_seat(uid: str) -> bool:
+    """صندلی‌های هوش مصنوعیِ حالت «بازی با سیستم» شناسه‌ای مثل
+    'ai_bot_xxxxxx' دارند (game_manager.AI_SEAT_PREFIX) که هیچ‌وقت به یک
+    ردیف واقعی در جدول users متصل نیست؛ همه‌ی مسیرهای اقتصاد/XP باید
+    این‌ها را نادیده بگیرند تا نه سکه‌ای از/به آن‌ها جابه‌جا شود نه
+    تلاشی برای int() کردنِ شناسه‌شان با خطا مواجه شود."""
+    return str(uid).startswith("ai_bot_")
+
+
+def _real_user_ids(room) -> List[int]:
+    return [int(uid) for uid in room.engine.players if not _is_ai_seat(uid)]
+
+
 def _charge_bets(db: Session, room) -> Optional[str]:
-    """شرط هر بازیکن را کسر می‌کند. اگر کسی سکه‌ی کافی نداشت، بدون کسر از
-    کسی، پیام خطا برمی‌گرداند (بازی این دور شروع نمی‌شود ولی اتاق باز می‌ماند)."""
+    """شرط هر بازیکن واقعی را کسر می‌کند. اگر کسی سکه‌ی کافی نداشت، بدون
+    کسر از کسی، پیام خطا برمی‌گرداند (بازی این دور شروع نمی‌شود ولی اتاق
+    باز می‌ماند). حالت «بازی با سیستم» اصلاً شرط‌بندی ندارد؛ صرفاً تمرین/
+    سرگرمی در برابر هوش مصنوعی است، نه رقابت بر سر سکه‌ی واقعی."""
+    if room.mode == "system":
+        room.bet_charged = False
+        return None
+
     catalog_entry = next((g for g in GAME_CATALOG if g["id"] == room.game_type), None)
     min_bet = catalog_entry.get("min_bet", 0) if catalog_entry else 0
     if min_bet <= 0:
         room.bet_charged = True
         return None
 
-    user_ids = [int(uid) for uid in room.engine.players]
+    user_ids = _real_user_ids(room)
     users = db.query(User).filter(User.id.in_(user_ids)).all()
     users_by_id = {u.id: u for u in users}
 
@@ -204,7 +244,7 @@ def _payout_winner(db: Session, room):
     catalog_entry = next((g for g in GAME_CATALOG if g["id"] == room.game_type), None)
     min_bet = catalog_entry.get("min_bet", 0) if catalog_entry else 0
     winner_id = room.engine.winner
-    if not winner_id or not room.bet_charged or min_bet <= 0:
+    if not winner_id or not room.bet_charged or min_bet <= 0 or _is_ai_seat(winner_id):
         return
 
     pot = min_bet * len(room.engine.players)
@@ -221,15 +261,15 @@ def _payout_winner(db: Session, room):
 
 
 def _award_game_xp(db: Session, room):
-    """به همه‌ی بازیکنان یک بازی تمام‌شده XP می‌دهد (برنده کمی بیشتر).
-    مستقل از _payout_winner چون باید حتی برای بازی‌های بدون شرط‌بندی
-    (min_bet=0) هم اجرا شود."""
+    """به همه‌ی بازیکنانِ واقعیِ یک بازی تمام‌شده XP می‌دهد (برنده کمی
+    بیشتر). مستقل از _payout_winner چون باید حتی برای بازی‌های بدون
+    شرط‌بندی (min_bet=0) یا بدون شرط‌بندی اصلاً (حالت system) هم اجرا شود."""
     if room.xp_awarded:
         return
     room.xp_awarded = True
 
     winner_id = room.engine.winner
-    user_ids = [int(uid) for uid in room.engine.players]
+    user_ids = _real_user_ids(room)
     users = db.query(User).filter(User.id.in_(user_ids)).all()
     for u in users:
         amount = XP_PER_GAME_PLAYED + (XP_WIN_BONUS if str(u.id) == str(winner_id) else 0)
@@ -266,9 +306,13 @@ async def _run_bots_and_maybe_finish(room):
 # ---------------------------------------------------------
 # وب‌سوکت اصلی بازی‌ها
 # مسیر بر اساس نوع بازی است (نه یک room_id ثابت که کلاینت انتخاب کند)؛
-# سرور خودش با matchmaking ساده یک اتاق مناسب پیدا/می‌سازد. احراز هویت
-# با توکن نشست (همان Bearer token که از /api/user/sync گرفته شده) انجام
-# می‌شود تا کسی نتواند جای کاربر دیگری وصل شود.
+# پارامتر mode مشخص می‌کند چطور اتاق پیدا/ساخته شود:
+#   - random  (پیش‌فرض): matchmaking عمومی (رفتار قبلی)
+#   - friends: اتاق خصوصی؛ اگر room_code داده نشود، یک اتاق تازه با کد
+#              جدید ساخته می‌شود؛ اگر داده شود، به همان اتاق ملحق می‌شود.
+#   - system : اتاق فوری که بقیه‌ی صندلی‌هایش را هوش مصنوعی پر می‌کند.
+# احراز هویت با توکن نشست (همان Bearer token که از /api/user/sync گرفته
+# شده) انجام می‌شود تا کسی نتواند جای کاربر دیگری وصل شود.
 # ---------------------------------------------------------
 @app.websocket("/ws/game/{game_type}/{user_id}")
 async def game_websocket_endpoint(
@@ -276,6 +320,8 @@ async def game_websocket_endpoint(
     game_type: str,
     user_id: str,
     token: str = Query(...),
+    mode: str = Query("random"),
+    room_code: Optional[str] = Query(None),
 ):
     verified_user_id = verify_session_token(token)
     if verified_user_id is None or str(verified_user_id) != str(user_id):
@@ -287,6 +333,9 @@ async def game_websocket_endpoint(
         await websocket.close(code=4404)
         return
 
+    if mode not in ("random", "friends", "system"):
+        mode = "random"
+
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.id == verified_user_id).first()
@@ -297,7 +346,27 @@ async def game_websocket_endpoint(
     finally:
         db.close()
 
-    room, just_started = await ws_manager.join(game_type, user_id, username, websocket)
+    target_room = None
+    just_started = False
+
+    if mode == "friends":
+        if room_code:
+            target_room = ws_manager.find_friends_room_by_code(room_code)
+            if target_room is None:
+                # کد نامعتبر است یا اتاق پر/شروع‌شده؛ خودش را وصل نمی‌کنیم
+                await websocket.close(code=4410)
+                return
+        else:
+            target_room = ws_manager.create_friends_room(game_type)
+        room, just_started_join = await ws_manager.join(game_type, user_id, username, websocket, room=target_room)
+        just_started = just_started_join
+    elif mode == "system":
+        target_room = ws_manager.create_system_room(game_type, user_id, username)
+        just_started = target_room.engine.is_started
+        room, _ = await ws_manager.join(game_type, user_id, username, websocket, room=target_room)
+    else:
+        room, just_started = await ws_manager.join(game_type, user_id, username, websocket)
+
     if room is None:
         await websocket.close(code=4409)  # اتاق پر است
         return
@@ -312,6 +381,15 @@ async def game_websocket_endpoint(
             await ws_manager.broadcast_raw(room, {"type": "ERROR", "message": error})
 
     await ws_manager.broadcast_state(room)
+
+    if room.room_code:
+        await ws_manager.send_personal(room, user_id, {"type": "ROOM_CODE", "code": room.room_code})
+
+    # حالت system از ابتدا با صندلی‌های هوش مصنوعی شروع می‌شود؛ اگر نوبتِ
+    # اول به یکی از آن‌ها برسد (هیچ‌وقت نباید، چون بازیکنِ واقعی همیشه
+    # اول است، ولی برای اطمینان) بلافاصله بازی می‌کنند.
+    if just_started and mode == "system":
+        await _run_bots_and_maybe_finish(room)
 
     try:
         while True:
@@ -642,3 +720,60 @@ async def ban_user(payload: BanPayload, admin: User = Depends(require_admin), db
         db.commit()
         return {"status": "ok", "message": f"کاربر {payload.target_user_id} مسدود شد."}
     raise HTTPException(status_code=404, detail="کاربر یافت نشد")
+
+
+# ---------------------------------------------------------
+# پنل مدیریت - تنظیمات هوش مصنوعیِ حریفِ «بازی با سیستم»
+# مالک بین دو حالت سوییچ می‌کند: قانون‌محور (رایگان، محلی) یا API (یک یا
+# چند سرویس خارجی با کلید/آدرس جدا؛ اگر یکی خطا بدهد نوبت به بعدی می‌رسد).
+# ---------------------------------------------------------
+class AIEndpointPayload(BaseModel):
+    name: str = ""
+    url: str
+    api_key: str = ""
+    model: str = "gpt-4o-mini"
+
+
+class AISettingsPayload(BaseModel):
+    mode: str  # "rule_based" | "api"
+    endpoints: List[AIEndpointPayload] = []
+
+
+@app.get("/api/admin/ai-settings")
+async def get_ai_settings(admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    row = db.query(AISettings).filter(AISettings.id == 1).first()
+    if row is None:
+        row = AISettings(id=1, mode="rule_based", api_endpoints_json="[]")
+        db.add(row)
+        db.commit()
+    try:
+        endpoints = json.loads(row.api_endpoints_json or "[]")
+    except (ValueError, TypeError):
+        endpoints = []
+    return {"mode": row.mode, "endpoints": endpoints}
+
+
+@app.post("/api/admin/ai-settings")
+async def set_ai_settings(
+    payload: AISettingsPayload,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    if payload.mode not in ("rule_based", "api"):
+        raise HTTPException(status_code=400, detail="mode باید rule_based یا api باشد.")
+
+    endpoints_data = [e.dict() for e in payload.endpoints]
+
+    row = db.query(AISettings).filter(AISettings.id == 1).first()
+    if row is None:
+        row = AISettings(id=1)
+        db.add(row)
+    row.mode = payload.mode
+    row.api_endpoints_json = json.dumps(endpoints_data, ensure_ascii=False)
+    db.commit()
+
+    # فوراً روی همه‌ی اتاق‌های در حال اجرا هم اعمال می‌شود، بدون نیاز به ری‌استارت سرور
+    ws_manager.ai_mode = row.mode
+    ws_manager.ai_endpoints = endpoints_data
+
+    return {"status": "ok", "mode": row.mode, "endpoints": endpoints_data}
