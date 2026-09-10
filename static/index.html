@@ -976,6 +976,67 @@
             max-width: 100%;
         }
 
+        /* Mode Picker (friends / random / system) */
+        .mode-option-btn {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 16px;
+            border-radius: 14px;
+            border: 1px solid rgba(212, 175, 55, 0.25);
+            background: rgba(255,255,255,0.03);
+            cursor: pointer;
+            text-align: right;
+            transition: all 0.15s ease;
+        }
+
+        .mode-option-btn:active {
+            transform: scale(0.98);
+            background: rgba(230, 183, 71, 0.1);
+        }
+
+        .mode-option-icon {
+            font-size: 26px;
+            flex-shrink: 0;
+        }
+
+        .mode-option-text {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .mode-option-title {
+            font-size: 14px;
+            font-weight: 800;
+            color: var(--text-gold);
+        }
+
+        .mode-option-sub {
+            font-size: 11.5px;
+            color: var(--text-sub);
+        }
+
+        #mode-picker-code-row {
+            gap: 8px;
+            align-items: center;
+        }
+
+        #mode-picker-code-input {
+            flex: 1;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            border-radius: 10px;
+            padding: 10px 12px;
+            color: #fff;
+            font-size: 15px;
+            font-weight: 700;
+            letter-spacing: 3px;
+            text-align: center;
+            text-transform: uppercase;
+        }
+
         /* Hokm Trump Picker Modal */
         #hokm-trump-picker {
             background: rgba(10, 16, 28, 0.94);
@@ -1603,6 +1664,31 @@
                     <span class="admin-stat-val" id="stat-coins">-</span>
                 </div>
             </div>
+
+            <h3 style="font-size: 15px; font-weight: 800; margin: 22px 0 10px; color: var(--text-gold);">🤖 حریف «بازی با سیستم»</h3>
+            <div class="admin-box" style="display:flex; flex-direction:column; gap:12px;">
+                <div style="font-size: 12px; color: var(--text-sub); line-height:1.8;">
+                    انتخاب کن حریفِ حالت «بازی با سیستم» با منطق ساده‌ی محلی (رایگان) بازی کند یا با یک سرویس هوش مصنوعیِ خارجی. اگر حالت API را انتخاب کنی، می‌توانی چند سرویس پشت‌سرهم تعریف کنی؛ اگر اولی جواب نداد، خودکار به بعدی می‌رویم.
+                </div>
+
+                <div style="display:flex; gap:10px;">
+                    <label style="flex:1; display:flex; align-items:center; gap:6px; font-size:12.5px; cursor:pointer;">
+                        <input type="radio" name="ai-mode-radio" value="rule_based" id="ai-mode-rule">
+                        قانون‌محور (محلی)
+                    </label>
+                    <label style="flex:1; display:flex; align-items:center; gap:6px; font-size:12.5px; cursor:pointer;">
+                        <input type="radio" name="ai-mode-radio" value="api" id="ai-mode-api">
+                        سرویس هوش مصنوعی (API)
+                    </label>
+                </div>
+
+                <div id="ai-endpoints-list" style="display:flex; flex-direction:column; gap:10px;"></div>
+
+                <button type="button" class="btn-gold" style="width:auto; padding:8px 14px; font-size:12px;" onclick="addAiEndpointRow()">+ افزودن سرویس دیگر</button>
+
+                <button type="button" class="btn-gold" onclick="saveAiSettings()">ذخیره‌ی تنظیمات هوش مصنوعی</button>
+                <div id="ai-settings-status" style="font-size:11.5px; color: var(--text-sub); min-height:14px;"></div>
+            </div>
         </div>
 
         <!-- Tab: VIP Club (سطح/XP، آواتار، تغییر نام) -->
@@ -1729,6 +1815,13 @@
                 </div>
             </div>
 
+            <!-- کد اتاق حالت «بازی با دوستان»؛ فقط تا وقتی اتاق پر نشده نمایش دارد -->
+            <div id="room-code-banner" style="display:none; align-items:center; justify-content:center; gap:10px; margin: 8px auto 0; max-width: 360px; background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.4); border-radius: 12px; padding: 10px 14px;">
+                <span style="font-size:12px; color:#a7f3d0;">کد اتاق برای دوستت:</span>
+                <span id="room-code-value" style="font-size:18px; font-weight:800; letter-spacing:2px; color:#10b981;"></span>
+                <button onclick="copyRoomCode()" style="border:none; background:#10b981; color:#052e1f; font-weight:700; font-size:11px; padding:5px 10px; border-radius:8px; cursor:pointer;">کپی</button>
+            </div>
+
             <div class="felt-table" id="felt-table">
                 <!-- Floating Reaction Bar -->
                 <div class="felt-actions-bar">
@@ -1805,6 +1898,50 @@
             <div class="help-footer">
                 <div class="help-dots" id="help-dots"></div>
                 <button class="btn-gold help-next-btn" id="help-next-btn" onclick="nextHelpSlide()">بعدی</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mode Picker Overlay: friends / random / system -->
+    <div id="mode-picker-overlay" class="help-overlay" style="display:none;">
+        <div class="help-card">
+            <div class="help-header">
+                <span id="mode-picker-title">انتخاب حالت بازی</span>
+                <button class="help-skip-btn" onclick="closeModePicker()">بستن ✕</button>
+            </div>
+            <div class="help-body" style="align-items: stretch; gap: 10px;">
+                <button class="mode-option-btn" onclick="pickMode('friends')">
+                    <div class="mode-option-icon">👥</div>
+                    <div class="mode-option-text">
+                        <div class="mode-option-title">بازی با دوستان</div>
+                        <div class="mode-option-sub">یک اتاق خصوصی بساز و کدش را برای دوستت بفرست</div>
+                    </div>
+                </button>
+                <button class="mode-option-btn" onclick="pickMode('friends_join')">
+                    <div class="mode-option-icon">🔑</div>
+                    <div class="mode-option-text">
+                        <div class="mode-option-title">ورود با کد دوست</div>
+                        <div class="mode-option-sub">کدی که دوستت برایت فرستاده را وارد کن</div>
+                    </div>
+                </button>
+                <div id="mode-picker-code-row" style="display:none;">
+                    <input id="mode-picker-code-input" type="text" maxlength="5" placeholder="کد ۵ کاراکتری">
+                    <button class="btn-gold" style="width:auto; padding:10px 16px;" onclick="pickFriendsJoinSubmit()">ورود</button>
+                </div>
+                <button class="mode-option-btn" onclick="pickMode('random')">
+                    <div class="mode-option-icon">🎲</div>
+                    <div class="mode-option-text">
+                        <div class="mode-option-title">رقیب تصادفی</div>
+                        <div class="mode-option-sub">با یک بازیکن آنلاینِ دیگر جفت می‌شوی</div>
+                    </div>
+                </button>
+                <button class="mode-option-btn" onclick="pickMode('system')">
+                    <div class="mode-option-icon">🤖</div>
+                    <div class="mode-option-text">
+                        <div class="mode-option-title">بازی با سیستم</div>
+                        <div class="mode-option-sub">بلافاصله شروع می‌شود؛ حریف هوش مصنوعی است</div>
+                    </div>
+                </button>
             </div>
         </div>
     </div>
@@ -1959,6 +2096,7 @@
             if (currentUser.is_admin) {
                 document.getElementById('nav-admin-btn').style.display = 'flex';
                 loadAdminStats();
+                loadAiSettings();
             }
         }
 
@@ -2158,7 +2296,7 @@
                     gamesCatalog[game.id] = game;
                     const el = document.createElement('div');
                     el.className = 'game-card-hub';
-                    el.onclick = () => enterGame(game.id, game.title);
+                    el.onclick = () => openModePicker(game.id, game.title);
                     
                     const badgeHtml = game.badge ? `<div class="game-card-badge">${game.badge}</div>` : '';
                     el.innerHTML = `
@@ -2188,7 +2326,7 @@
         // ---------------------------------------------------------
         // ۴. اتصال WebSocket & منطق میز بازی
         // ---------------------------------------------------------
-        function enterGame(gameType, title) {
+        function enterGame(gameType, title, mode, roomCode) {
             document.getElementById('arena-title').innerText = title;
             currentGameType = gameType;
             selectedHandCard = null;
@@ -2199,12 +2337,52 @@
             document.getElementById('player-hand-container').innerHTML =
                 '<div style="color:var(--text-sub); font-size:13px; font-weight:600;">در انتظار سایر بازیکنان...</div>';
 
-            connectWebSocket(gameType);
+            connectWebSocket(gameType, mode || 'random', roomCode || null);
 
             // دفعه‌ی اول ورود به هر بازی، تور آموزشی «بعدی/بعدی...» خودکار باز می‌شود
             if (!hasSeenGameTutorial(gameType)) {
                 openGameHelp(gameType, true);
             }
+        }
+
+        // ---------------------------------------------------------
+        // انتخاب حالت ورود به بازی: با دوستان / رقیب تصادفی / با سیستم
+        // ---------------------------------------------------------
+        let _modePickerGame = { id: null, title: null };
+
+        function openModePicker(gameId, title) {
+            _modePickerGame = { id: gameId, title };
+            document.getElementById('mode-picker-title').innerText = title;
+            document.getElementById('mode-picker-code-row').style.display = 'none';
+            document.getElementById('mode-picker-code-input').value = '';
+            document.getElementById('mode-picker-overlay').style.display = 'flex';
+        }
+
+        function closeModePicker() {
+            document.getElementById('mode-picker-overlay').style.display = 'none';
+        }
+
+        function pickMode(mode) {
+            if (mode === 'friends_join') {
+                // به‌جای بستن، فیلد وارد کردن کد را نشان بده
+                document.getElementById('mode-picker-code-row').style.display = 'flex';
+                document.getElementById('mode-picker-code-input').focus();
+                return;
+            }
+            const { id, title } = _modePickerGame;
+            closeModePicker();
+            enterGame(id, title, mode, null);
+        }
+
+        function pickFriendsJoinSubmit() {
+            const code = (document.getElementById('mode-picker-code-input').value || '').trim().toUpperCase();
+            if (code.length < 3) {
+                alert('کد اتاق را کامل وارد کنید.');
+                return;
+            }
+            const { id, title } = _modePickerGame;
+            closeModePicker();
+            enterGame(id, title, 'friends', code);
         }
 
         // ---------------------------------------------------------
@@ -2316,10 +2494,13 @@
             }
         }
 
-        function connectWebSocket(gameType) {
+        function connectWebSocket(gameType, mode, roomCode) {
             if (socket) { try { socket.close(); } catch (e) {} }
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}/ws/game/${gameType}/${currentUser.id}?token=${encodeURIComponent(currentUser.token)}`;
+            let wsUrl = `${protocol}//${window.location.host}/ws/game/${gameType}/${currentUser.id}?token=${encodeURIComponent(currentUser.token)}&mode=${encodeURIComponent(mode || 'random')}`;
+            if (roomCode) {
+                wsUrl += `&room_code=${encodeURIComponent(roomCode)}`;
+            }
 
             socket = new WebSocket(wsUrl);
 
@@ -2334,6 +2515,8 @@
 
                 if (data.type === 'STATE_UPDATE') {
                     renderGameState(data.state);
+                } else if (data.type === 'ROOM_CODE') {
+                    showRoomCodeBanner(data.code);
                 } else if (data.type === 'LIVE_EMOJI') {
                     showFloatingEmoji(data.emoji);
                 } else if (data.type === 'DICE_ROLLED') {
@@ -2351,11 +2534,32 @@
                 }
             };
 
-            socket.onclose = () => {
+            socket.onclose = (event) => {
                 const statusEl = document.getElementById('ui-status');
                 statusEl.innerText = "آفلاین";
                 statusEl.style.color = "#ef4444";
+                // کد 4410 یعنی کد اتاقِ حالت «بازی با دوستان» نامعتبر یا پر/شروع‌شده بود
+                if (event && event.code === 4410) {
+                    alert('این کد اتاق معتبر نیست یا اتاق پر/شروع شده است.');
+                }
             };
+        }
+
+        function showRoomCodeBanner(code) {
+            const banner = document.getElementById('room-code-banner');
+            if (!banner) return;
+            document.getElementById('room-code-value').innerText = code;
+            banner.style.display = 'flex';
+        }
+
+        function copyRoomCode() {
+            const code = document.getElementById('room-code-value').innerText;
+            try {
+                navigator.clipboard.writeText(code);
+                if (window.Telegram?.WebApp?.HapticFeedback) {
+                    window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+                }
+            } catch (e) { /* بی‌اهمیت */ }
         }
 
         // ---------------------------------------------------------
@@ -2419,9 +2623,36 @@
                 if (state.deal_phase === 0 && state.hakim === String(currentUser.id)) {
                     trumpPicker.style.display = 'flex';
                 }
+                // نشان‌دادن خال زمینه، تا بازیکن قبل از هر کلیک بداند باید
+                // کدام خال را دنبال کند (قبلاً فقط بعد از یک خطا می‌فهمید)
+                let leadBadge = document.getElementById('hokm-lead-suit-badge');
+                if (!leadBadge) {
+                    leadBadge = document.createElement('div');
+                    leadBadge.id = 'hokm-lead-suit-badge';
+                    leadBadge.style.cssText = 'position:absolute; top:8px; right:50%; transform:translateX(50%); background:rgba(0,0,0,0.55); border:1px solid rgba(212,175,55,0.4); border-radius:20px; padding:4px 12px; font-size:12px; font-weight:700; color:#fde68a; z-index:5;';
+                    document.getElementById('felt-table').appendChild(leadBadge);
+                }
+                if (state.lead_suit) {
+                    leadBadge.innerText = `خال زمینه: ${state.lead_suit}`;
+                    leadBadge.style.display = 'block';
+                } else {
+                    leadBadge.style.display = 'none';
+                }
+
+                const mustFollow = state.lead_suit && myHand.some(c => c.suit === state.lead_suit);
                 (state.trick_cards || []).forEach(entry => tableContainer.appendChild(makeCardEl(entry.card)));
                 myHand.forEach(card => {
-                    const el = makeCardEl(card, () => sendAction('play_card', { suit: card.suit, rank: card.rank }));
+                    const canPlay = !mustFollow || card.suit === state.lead_suit;
+                    const el = makeCardEl(card, () => {
+                        if (!canPlay) {
+                            alert(`باید خال زمینه (${state.lead_suit}) را بازی کنید.`);
+                            return;
+                        }
+                        sendAction('play_card', { suit: card.suit, rank: card.rank });
+                    });
+                    if (!canPlay) {
+                        el.style.opacity = '0.45';
+                    }
                     handContainer.appendChild(el);
                 });
                 return;
@@ -2542,6 +2773,8 @@
             if (socket) socket.close();
             switchTab('tab-hub', document.querySelector('.nav-item-main'));
             document.getElementById('table-cards-container').innerHTML = "";
+            const banner = document.getElementById('room-code-banner');
+            if (banner) banner.style.display = 'none';
         }
 
         // ---------------------------------------------------------
@@ -2698,6 +2931,78 @@
                     document.getElementById('stat-coins').innerText = Number(data.total_coins || 0).toLocaleString();
                 }
             } catch (e) {}
+        }
+
+        // ---------------------------------------------------------
+        // پنل مدیریت — تنظیمات هوش مصنوعیِ حریفِ «بازی با سیستم»
+        // ---------------------------------------------------------
+        function _aiEndpointRowHtml(ep) {
+            ep = ep || { name: '', url: '', api_key: '', model: 'gpt-4o-mini' };
+            return `
+                <div class="ai-endpoint-row" style="border:1px solid rgba(212,175,55,0.2); border-radius:10px; padding:10px; display:flex; flex-direction:column; gap:6px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:11.5px; color:var(--text-sub);">سرویس</span>
+                        <button type="button" onclick="this.closest('.ai-endpoint-row').remove()" style="background:none; border:none; color:#ef4444; font-size:11px; cursor:pointer;">حذف ✕</button>
+                    </div>
+                    <input class="ai-ep-name" placeholder="نام (اختیاری، مثلاً: اصلی)" value="${(ep.name || '').replace(/"/g, '&quot;')}" style="background:rgba(0,0,0,0.3); border:1px solid rgba(212,175,55,0.25); border-radius:8px; padding:8px 10px; color:#fff; font-size:12px;">
+                    <input class="ai-ep-url" placeholder="آدرس API (مثلاً: https://api.openai.com/v1/chat/completions)" value="${(ep.url || '').replace(/"/g, '&quot;')}" style="background:rgba(0,0,0,0.3); border:1px solid rgba(212,175,55,0.25); border-radius:8px; padding:8px 10px; color:#fff; font-size:12px; direction:ltr; text-align:left;">
+                    <input class="ai-ep-key" placeholder="API Key" value="${(ep.api_key || '').replace(/"/g, '&quot;')}" style="background:rgba(0,0,0,0.3); border:1px solid rgba(212,175,55,0.25); border-radius:8px; padding:8px 10px; color:#fff; font-size:12px; direction:ltr; text-align:left;">
+                    <input class="ai-ep-model" placeholder="مدل (مثلاً: gpt-4o-mini)" value="${(ep.model || 'gpt-4o-mini').replace(/"/g, '&quot;')}" style="background:rgba(0,0,0,0.3); border:1px solid rgba(212,175,55,0.25); border-radius:8px; padding:8px 10px; color:#fff; font-size:12px; direction:ltr; text-align:left;">
+                </div>
+            `;
+        }
+
+        function addAiEndpointRow(ep) {
+            document.getElementById('ai-endpoints-list').insertAdjacentHTML('beforeend', _aiEndpointRowHtml(ep));
+        }
+
+        async function loadAiSettings() {
+            try {
+                const res = await authFetch('/api/admin/ai-settings');
+                if (!res.ok) return;
+                const data = await res.json();
+                document.getElementById(data.mode === 'api' ? 'ai-mode-api' : 'ai-mode-rule').checked = true;
+                const list = document.getElementById('ai-endpoints-list');
+                list.innerHTML = '';
+                (data.endpoints || []).forEach(ep => addAiEndpointRow(ep));
+                if ((data.endpoints || []).length === 0) {
+                    addAiEndpointRow(); // حداقل یک ردیف خالی برای راحتی پر کردن
+                }
+            } catch (e) {}
+        }
+
+        async function saveAiSettings() {
+            const mode = document.querySelector('input[name="ai-mode-radio"]:checked')?.value || 'rule_based';
+            const endpoints = Array.from(document.querySelectorAll('.ai-endpoint-row')).map(row => ({
+                name: row.querySelector('.ai-ep-name').value.trim(),
+                url: row.querySelector('.ai-ep-url').value.trim(),
+                api_key: row.querySelector('.ai-ep-key').value.trim(),
+                model: row.querySelector('.ai-ep-model').value.trim() || 'gpt-4o-mini',
+            })).filter(ep => ep.url); // ردیف‌های خالی بدون آدرس نادیده گرفته می‌شوند
+
+            if (mode === 'api' && endpoints.length === 0) {
+                alert('برای حالت API حداقل یک سرویس با آدرس معتبر وارد کن.');
+                return;
+            }
+
+            const statusEl = document.getElementById('ai-settings-status');
+            statusEl.innerText = 'در حال ذخیره...';
+            try {
+                const res = await authFetch('/api/admin/ai-settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode, endpoints }),
+                });
+                if (res.ok) {
+                    statusEl.innerText = '✅ ذخیره شد.';
+                    setTimeout(() => { statusEl.innerText = ''; }, 3000);
+                } else {
+                    const data = await res.json().catch(() => ({}));
+                    statusEl.innerText = '❌ ' + (data.detail || 'خطا در ذخیره');
+                }
+            } catch (e) {
+                statusEl.innerText = '❌ ارتباط با سرور برقرار نشد.';
+            }
         }
 
         // شروع اپلیکیشن
